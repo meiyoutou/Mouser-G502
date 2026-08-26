@@ -1,0 +1,53 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Local build/test logs and scraped reference pages
+*.log
+*.err
+ddg.html
+logitech_page_*.html
+
+# Local packaged binaries are published as GitHub Release assets, not committed
+*.zip
+Mouser-G502*/
+Mouser.bat
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# Per-machine / per-user dev-environment pins. These commonly carry
+# signing identities, API keys, install dirs, or runtime versions that
+# are local to a single developer's setup.
+.python-version
+.tool-versions
+.envrc
+.env
+.env.*
+!.env.local.example
+*.local.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Build artifacts
+build_icon.py
+
+# Shortcuts (user-specific paths)
+*.lnk

@@ -1,0 +1,1602 @@
+"""
+Small Logitech device catalog entries.
+
+These records are maintained device by device after the Mouser UI has been
+checked locally. We keep the catalog small so supported devices stay easy to
+review and maintain.
+"""
+
+from __future__ import annotations
+
+
+MX_MASTER_BUTTONS = (
+    "middle",
+    "gesture",
+    "gesture_left",
+    "gesture_right",
+    "gesture_up",
+    "gesture_down",
+    "xbutton1",
+    "xbutton2",
+    "hscroll_left",
+    "hscroll_right",
+    "mode_shift",
+)
+
+# MX Master 4 layout: two gesture-capable controls, each with its own swipe
+# set (config keys are tied to the physical button — see core/config.py):
+#  - Sense Panel (CID 0x01A0): large top surface → config key "actions_ring",
+#    labeled "Actions Ring". Primary gesture control; tap can activate the
+#    Actions Ring, and (when tap = Do Nothing) it has its own swipe set
+#    "actions_ring_left/right/up/down".
+#  - Gesture button (CID 0x00C3): small thumb-area button → config key
+#    "gesture", labeled "Gesture button". Its click uses the gesture_* family
+#    and (when tap = Do Nothing) it has its own swipe set
+#    "gesture_left/right/up/down" via a rawXY hand-off while held.
+MX_MASTER_4_BUTTONS = (
+    "middle",
+    "actions_ring",
+    "actions_ring_left",
+    "actions_ring_right",
+    "actions_ring_up",
+    "actions_ring_down",
+    "gesture",
+    "gesture_left",
+    "gesture_right",
+    "gesture_up",
+    "gesture_down",
+    "xbutton1",
+    "xbutton2",
+    "hscroll_left",
+    "hscroll_right",
+    "mode_shift",
+)
+
+MX_ANYWHERE_BUTTONS = (
+    "middle",
+    "gesture",
+    "gesture_left",
+    "gesture_right",
+    "gesture_up",
+    "gesture_down",
+    "xbutton1",
+    "xbutton2",
+    "hscroll_left",
+    "hscroll_right",
+)
+
+MX_ANYWHERE_SMARTSHIFT_BUTTONS = (
+    *MX_ANYWHERE_BUTTONS,
+    "mode_shift",
+)
+
+# G502 family (G-series gaming mice). Logitech G HUB's physical/control map is
+# broader than what Mouser can intercept today:
+#  - G502 / Proteus / HERO / LIGHTSPEED: 11 programmable buttons in G HUB:
+#    left click, right click, wheel click, back, forward, DPI Shift/sniper,
+#    DPI down, DPI up, wheel tilt left, wheel tilt right, and profile cycle.
+#    The wheel-mode shift behind the wheel is a mechanical free-spin toggle,
+#    not a programmable button.
+#  - G502 X / X LIGHTSPEED / X PLUS: Logitech advertises 13 programmable
+#    controls and specifically calls out the adjustable DPI-Shift control plus
+#    wheel left/right tilt as programmable in G HUB.
+#
+# These devices expose onboard-profile features rather than REPROG_CONTROLS_V4
+# (0x1B04). Mouser can therefore remap standard OS mouse events directly; the
+# DPI/Profile/Sniper controls need the explicit onboard unlock flow, which
+# turns them into F13-F16 keyboard events that Mouser intercepts on Windows.
+G502_RAW_EXTRA_BUTTONS = (
+    "g502_dpi_shift",
+    "g502_dpi_down",
+    "g502_dpi_up",
+    "g502_profile_cycle",
+)
+G502_OS_LEVEL_BUTTONS = (
+    "middle",
+    "xbutton1",
+    "xbutton2",
+    *G502_RAW_EXTRA_BUTTONS,
+    "hscroll_left",
+    "hscroll_right",
+)
+G502_BUTTONS = G502_OS_LEVEL_BUTTONS
+
+G502_11_BUTTON_LAYOUT_NOTE = (
+    "G502 / Proteus / HERO / LIGHTSPEED have 11 G HUB-programmable "
+    "buttons: left/right click, wheel click, back, forward, DPI "
+    "Shift/sniper, DPI down, DPI up, wheel tilt left/right, and profile "
+    "cycle. The wheel-mode shift button is a mechanical free-spin toggle. "
+    "Mouser exposes host-visible mouse events here: wheel click, "
+    "back/forward, DPI Shift/sniper, DPI down/up, profile cycle, and wheel "
+    "tilt left/right. DPI/profile/sniper controls need the G502 onboard "
+    "unlock first. Mouser backs up the active onboard profile before changing "
+    "those controls into F13-F16 keys that Mouser intercepts."
+)
+
+G502_X_LAYOUT_NOTE = (
+    "G502 X / X LIGHTSPEED / X PLUS expose 13 G HUB-programmable controls, "
+    "including the adjustable DPI-Shift control and wheel tilt left/right. "
+    "Mouser exposes host-visible mouse events here: wheel click, "
+    "back/forward, DPI Shift/sniper, DPI down/up, profile cycle, and wheel "
+    "tilt left/right. DPI/profile/sniper controls need the G502 onboard "
+    "unlock first. Mouser backs up the active onboard profile before changing "
+    "those controls into F13-F16 keys that Mouser intercepts."
+)
+
+G502_MAPPABLE_BUTTON_LABELS = {
+    "middle": "Wheel click",
+    "xbutton1": "Back thumb button",
+    "xbutton2": "Forward thumb button",
+    "g502_dpi_shift": "DPI Shift / sniper",
+    "g502_dpi_down": "DPI down",
+    "g502_dpi_up": "DPI up",
+    "g502_profile_cycle": "Profile cycle",
+    "hscroll_left": "Wheel tilt left",
+    "hscroll_right": "Wheel tilt right",
+}
+
+G502_11_PHYSICAL_CONTROLS = (
+    "Left click",
+    "Right click",
+    "Wheel click",
+    "Back thumb button",
+    "Forward thumb button",
+    "DPI Shift / sniper",
+    "DPI down",
+    "DPI up",
+    "Wheel tilt left",
+    "Wheel tilt right",
+    "Profile cycle",
+    "Wheel mode shift (mechanical)",
+)
+
+G502_X_PHYSICAL_CONTROLS = (
+    "Left click",
+    "Right click",
+    "Wheel click",
+    "Scroll up",
+    "Scroll down",
+    "Back thumb button",
+    "Forward thumb button",
+    "DPI Shift / sniper",
+    "DPI down",
+    "DPI up",
+    "Wheel tilt left",
+    "Wheel tilt right",
+    "Profile cycle",
+    "Wheel mode shift (mechanical)",
+)
+
+# M650 Signature family: no horizontal scroll, no mode-shift, no dedicated gesture button.
+# Exposes a Virtual Gesture Button (CID 0x00D7) via REPROG_CONTROLS_V4 but no physical
+# gesture key. Middle click, back, and forward side buttons are the configurable controls.
+M650_BUTTONS = (
+    "middle",
+    "xbutton1",
+    "xbutton2",
+)
+
+# M585 / M590 Multi-Device Mouse: middle click (wheel press), back and forward thumb
+# buttons, plus the scroll wheel's left/right tilt. The wheel tilt reports as horizontal
+# scroll (CIDs 0x005B / 0x005D) and is exposed here as the ``hscroll_left`` /
+# ``hscroll_right`` controls so it can be remapped (for example to left/right click).
+# No physical gesture button or mode-shift; the Virtual Gesture Button (CID 0x00D7) is
+# not surfaced, matching the M650 treatment.
+M590_BUTTONS = (
+    "middle",
+    "xbutton1",
+    "xbutton2",
+    "hscroll_left",
+    "hscroll_right",
+)
+
+# M720 Triathlon Multi-Device Mouse: middle click, back/forward thumb buttons,
+# wheel tilt PLUS a physical gesture button. The gesture button is CID 0x00D0,
+# a rawXY-capable control (flags 0x0171). It supports click plus the four
+# directional swipes when a rawXY divert succeeds at connect time. This is why
+# the M720 gets its own tuple instead of reusing ``M590_BUTTONS``.
+M720_BUTTONS = (
+    "middle",
+    "gesture",
+    "gesture_left",
+    "gesture_right",
+    "gesture_up",
+    "gesture_down",
+    "xbutton1",
+    "xbutton2",
+    "hscroll_left",
+    "hscroll_right",
+)
+
+
+def _hotspot(
+    button_key: str,
+    label: str,
+    summary_type: str,
+    norm_x: float,
+    norm_y: float,
+    *,
+    label_side: str,
+    label_off_x: int,
+    label_off_y: int,
+    is_hscroll: bool = False,
+    status: str = "mappable",
+    status_text_key: str = "",
+) -> dict[str, object]:
+    return {
+        "buttonKey": button_key,
+        "label": label,
+        "summaryType": summary_type,
+        "normX": norm_x,
+        "normY": norm_y,
+        "labelSide": label_side,
+        "labelOffX": label_off_x,
+        "labelOffY": label_off_y,
+        "isHScroll": is_hscroll,
+        "status": status,
+        "statusTextKey": status_text_key,
+    }
+
+
+def _layout(
+    key: str,
+    label: str,
+    image_asset: str,
+    image_width: int,
+    image_height: int,
+    hotspots: list[dict[str, object]],
+    *,
+    manual_selectable: bool = False,
+) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "image_asset": image_asset,
+        "image_width": image_width,
+        "image_height": image_height,
+        "interactive": True,
+        "manual_selectable": manual_selectable,
+        "note": "",
+        "note_key": "",
+        "physical_controls": [],
+        "button_labels": {},
+        "hotspots": hotspots,
+    }
+
+
+LOGI_DEVICE_SPECS = (
+    {
+        "key": "mx_master_4",
+        "display_name": "MX Master 4",
+        "product_ids": (0xB042, 0xB048),
+        "aliases": (
+            "Logitech MX Master 4",
+            "Wireless Mouse MX Master 4",
+            "MX Master 4 for Mac",
+            "MX Master 4 for Business",
+            "MX_Master_4",
+        ),
+        "ui_layout": "mx_master_4",
+        "image_asset": "logitech-mice/mx_master_4/mouse.png",
+        "supported_buttons": MX_MASTER_4_BUTTONS,
+        "has_hires_wheel": True,
+        "has_thumbwheel": True,
+        "gesture_cids": (0x01A0, 0x00C3, 0x00D7),
+        "thumb_button_cid": 0x00C3,
+        "gesture_via_sense_panel": True,
+    },
+    {
+        "key": "mx_master_3s",
+        "display_name": "MX Master 3S",
+        "product_ids": (0xB034, 0xB043),
+        "aliases": (
+            "Logitech MX Master 3S",
+            "MX Master 3S for Mac",
+            "MX Master 3S for Business",
+        ),
+        "ui_layout": "mx_master_3s",
+        "image_asset": "logitech-mice/mx_master_3s/mouse.png",
+        "has_hires_wheel": True,
+        "has_thumbwheel": True,
+    },
+    {
+        "key": "mx_master_3",
+        "display_name": "MX Master 3",
+        "product_ids": (0xB023, 0xB028),
+        "aliases": (
+            "Wireless Mouse MX Master 3",
+            "MX Master 3 for Mac",
+            "MX Master 3 Mac",
+            "MX Master 3 for Business",
+        ),
+        "ui_layout": "mx_master_3",
+        "image_asset": "logitech-mice/mx_master_3/mouse.png",
+        "has_hires_wheel": True,
+        "has_thumbwheel": True,
+    },
+    {
+        "key": "mx_master_2s",
+        "display_name": "MX Master 2S",
+        "product_ids": (0xB019,),
+        "aliases": (
+            "Wireless Mouse MX Master 2S",
+            "MX Master 2S",
+        ),
+        "ui_layout": "mx_master_2s",
+        "image_asset": "logitech-mice/mx_master_2s/mouse.png",
+        "dpi_max": 4000,
+        "has_hires_wheel": True,
+        "has_thumbwheel": True,
+    },
+    {
+        "key": "mx_master",
+        "display_name": "MX Master",
+        "product_ids": (0xB012,),
+        "aliases": (
+            "Wireless Mouse MX Master",
+            "MX Master",
+        ),
+        "ui_layout": "mx_master_classic",
+        "image_asset": "logitech-mice/mx_master/mouse.png",
+        "dpi_max": 4000,
+        "has_hires_wheel": True,
+        "has_thumbwheel": True,
+    },
+    {
+        "key": "mx_anywhere_3s",
+        "display_name": "MX Anywhere 3S",
+        "product_ids": (0xB037,),
+        "aliases": (
+            "Logitech MX Anywhere 3S",
+            "MX Anywhere 3S for Mac",
+        ),
+        "ui_layout": "mx_anywhere_3s",
+        "image_asset": "logitech-mice/mx_anywhere_3s/mouse.png",
+        "supported_buttons": MX_ANYWHERE_SMARTSHIFT_BUTTONS,
+        "dpi_max": 8000,
+    },
+    {
+        "key": "mx_anywhere_3",
+        "display_name": "MX Anywhere 3",
+        "product_ids": (0xB025, 0xB02D),
+        "aliases": (
+            "MX Anywhere 3 for Mac",
+            "MX Anywhere 3 for Business",
+        ),
+        "ui_layout": "mx_anywhere_3",
+        "image_asset": "logitech-mice/mx_anywhere_3/mouse.png",
+        "supported_buttons": MX_ANYWHERE_SMARTSHIFT_BUTTONS,
+        "dpi_max": 4000,
+    },
+    {
+        "key": "mx_anywhere_2s",
+        "display_name": "MX Anywhere 2S",
+        "product_ids": (0xB01A,),
+        "aliases": (
+            "Wireless Mobile Mouse MX Anywhere 2S",
+            "MX Anywhere 2S",
+        ),
+        "ui_layout": "mx_anywhere_2s",
+        "image_asset": "logitech-mice/mx_anywhere_2s/mouse.png",
+        "supported_buttons": MX_ANYWHERE_BUTTONS,
+        "dpi_max": 4000,
+    },
+    {
+        "key": "mx_anywhere_2",
+        "display_name": "MX Anywhere 2",
+        "product_ids": (0xB013, 0xB01F),
+        "aliases": (
+            "Wireless Mouse MX Anywhere 2",
+            "Wireless Mobile Mouse MX Anywhere 2",
+            "MX Anywhere 2",
+            "MX Anywhere 2 for Mac",
+        ),
+        "ui_layout": "mx_anywhere_2s",
+        "image_asset": "logitech-mice/mx_anywhere_2s/mouse.png",
+        "supported_buttons": MX_ANYWHERE_BUTTONS,
+        "dpi_min": 400,
+        "dpi_max": 1600,
+    },
+    # -- M650 Signature family ------------------------------------------------
+    # Compact wireless mouse (middle, back, forward buttons). Connects via Logi
+    # Bolt receiver or Bluetooth LE. HID++ reports device name "Signature M650".
+    # Confirmed via live HID++ probe: REPROG_CONTROLS_V4 (slot 2 on Bolt receiver),
+    # LOWRES_WHEEL, ADJUSTABLE_DPI (200–4000 DPI), UNIFIED_BATTERY.
+    # Bluetooth LE product ID confirmed in issue #215 as 0xB02A; keep the
+    # common HID/OS name variants as fallbacks because some platforms only
+    # surface the product string.
+    {
+        "key": "m650",
+        "display_name": "M650 Signature",
+        "product_ids": (0xB02A,),
+        "aliases": (
+            "Signature M650",
+            "Logi M650",
+            "Logitech Signature M650",
+            "M650",
+            "M650 Signature",
+            "Logitech M650 Signature",
+            "M650 L",
+            "M650 L Signature",
+            "Signature M650 L",
+            "M650 Signature for Business",
+        ),
+        "ui_layout": "m650",
+        "image_asset": "icons/mouse-simple.svg",
+        "supported_buttons": M650_BUTTONS,
+        "dpi_min": 200,
+        "dpi_max": 4000,
+    },
+    # -- M585 / M590 Multi-Device Mouse --------------------------------------
+    # Compact multi-device mouse. Confirmed via live HID++ probe (see the
+    # discovery dump in core/m590.json): REPROG_CONTROLS_V4, LOWRES_WHEEL and
+    # BATTERY_STATUS. Physical controls are middle click (0x0052), back
+    # (0x0053), forward (0x0056) and the scroll wheel's left/right tilt
+    # (0x005B / 0x005D) which reports as horizontal scroll.
+    #
+    # This device enumerates behind USB Receiver PID 0xC52B, which is *shared*
+    # by several M-series devices, so we intentionally do NOT list it in
+    # ``product_ids`` (that would over-claim every device on the receiver -- see
+    # the fallback note in core/logi_devices.py). We match on the HID product
+    # name/aliases instead; when only the bare receiver PID is reported the
+    # generic layout is used, as before.
+    {
+        "key": "m585_m590",
+        "display_name": "M585/M590 Multi-Device Mouse",
+        "product_ids": (),
+        "aliases": (
+            "M585/M590 Multi-Device Mouse",
+            "M585/M590",
+            "M590 Multi-Device Mouse",
+            "M585 Multi-Device Mouse",
+            "Logitech M590",
+            "Logitech M585",
+            "M590",
+            "M585",
+        ),
+        "ui_layout": "m585_m590",
+        "image_asset": "logitech-mice/m585_m590/mouse.png",
+        "supported_buttons": M590_BUTTONS,
+        "dpi_min": 200,
+        "dpi_max": 8000,
+    },
+    # -- M720 Triathlon Multi-Device Mouse -----------------------------------
+    # Multi-device mouse. Bluetooth dumps confirm REPROG_CONTROLS_V4 (0x1B04)
+    # and BATTERY_STATUS (0x1000). HIRES_WHEEL_ENHANCED (0x2121) is present
+    # in the Unifying (0x405E) dump, but is not claimed for Bluetooth here.
+    # https://github.com/pwr-Solaar/Solaar/tree/master/docs/devices
+    # Physical controls are middle click (0x0052), back (0x0053), forward (0x0056), the
+    # scroll wheel's left/right tilt (0x005B / 0x005D, horizontal scroll) and
+    # gesture button is CID 0x00D0, a rawXY-capable control (flags 0x0171)
+    # listed first in ``gesture_cids`` so ``_divert`` requests rawXY on it
+    # and directional swipes work. 0x00D7 (firmware virtual gesture control)
+    # is kept as a fallback candidate. DPI is fixed at 1000; there is no
+    # mode-shift or SmartShift.
+    #
+    # Enumerated directly over Bluetooth with the device-specific PID 0xB015,
+    # so it is safe to list. The Unifying WPID (0x405E) is intentionally
+    # omitted: over the receiver it enumerates behind a *shared* receiver PID,
+    # which would over-claim (see the M585/M590 note above and
+    # core/logi_devices.py). Receiver connections still resolve by name/alias.
+    {
+        "key": "m720_triathlon",
+        "display_name": "M720 Triathlon Multi-Device Mouse",
+        "product_ids": (0xB015,),
+        "aliases": (
+            "M720 Triathlon Multi-Device Mouse",
+            # Logitech's M720 setup guide documents this Bluetooth pairing name:
+            # https://www.logitech.com/assets/64937/2/m720-web-qsg.pdf
+            "M720 Triathlon Mouse",
+            "M720 Triathlon",
+            "Logitech M720 Triathlon",
+            "M720",
+        ),
+        "ui_layout": "m720_triathlon",
+        "image_asset": "logitech-mice/m720_triathlon/mouse.svg",
+        "supported_buttons": M720_BUTTONS,
+        "gesture_cids": (0x00D0, 0x00D7),
+        "dpi_min": 1000,
+        "dpi_max": 1000,
+    },
+    # -- G502 family ----------------------------------------------------------
+    # Product IDs verified against Solaar's device descriptors. Wireless
+    # variants list both the wired USB PID and the Lightspeed receiver WPID.
+    {
+        "key": "g502_hero",
+        "display_name": "G502 HERO",
+        "product_ids": (0xC08B,),
+        "aliases": (
+            "Logitech G502 HERO Gaming Mouse",
+            "G502 HERO Gaming Mouse",
+            "Logitech G502 Hero",
+            "G502 SE HERO Gaming Mouse",
+            "Logitech G502 SE Hero",
+            "G502 HERO SE",
+        ),
+        "ui_layout": "g502",
+        "image_asset": "icons/mouse-simple.svg",
+        "supported_buttons": G502_OS_LEVEL_BUTTONS,
+        "gesture_cids": (),
+        "dpi_min": 100,
+        "dpi_max": 25600,
+        "requires_reprog_controls": False,
+    },
+    {
+        "key": "g502_lightspeed",
+        "display_name": "G502 LIGHTSPEED",
+        "product_ids": (0xC08D, 0x407F),
+        "aliases": (
+            "G502 LIGHTSPEED Wireless Gaming Mouse",
+            "G502 Lightspeed Gaming Mouse",
+        ),
+        "ui_layout": "g502",
+        "image_asset": "icons/mouse-simple.svg",
+        "supported_buttons": G502_OS_LEVEL_BUTTONS,
+        "gesture_cids": (),
+        "dpi_min": 100,
+        "dpi_max": 25600,
+        "requires_reprog_controls": False,
+    },
+    {
+        "key": "g502_x",
+        "display_name": "G502 X",
+        "product_ids": (0xC099, 0xC098, 0xC095, 0x409F, 0x4099),
+        "aliases": (
+            "G502 X Gaming Mouse",
+            "G502 X LIGHTSPEED",
+            "G502 X PLUS",
+        ),
+        "ui_layout": "g502_x",
+        "image_asset": "icons/mouse-simple.svg",
+        "supported_buttons": G502_OS_LEVEL_BUTTONS,
+        "gesture_cids": (),
+        "dpi_min": 100,
+        "dpi_max": 25600,
+        "requires_reprog_controls": False,
+    },
+    {
+        "key": "g502",
+        "display_name": "G502",
+        "product_ids": (0xC07D, 0xC332),
+        "aliases": (
+            "G502 Gaming Mouse",
+            "Tunable FPS Gaming Mouse G502",
+            "G502 Proteus Spectrum",
+            "G502 Proteus Core",
+        ),
+        "ui_layout": "g502",
+        "image_asset": "icons/mouse-simple.svg",
+        "supported_buttons": G502_OS_LEVEL_BUTTONS,
+        "gesture_cids": (),
+        "dpi_min": 200,
+        "dpi_max": 12000,
+        "requires_reprog_controls": False,
+    },
+)
+
+
+
+LOGI_DEVICE_LAYOUTS = {
+    # Project-authored M720 control schematic. See its shipped credits file.
+    # The targets correspond to the wheel press/tilt, side back/forward, and
+    # thumb gesture controls; the Easy-Switch control is not exposed by HID++.
+    "m720_triathlon": _layout(
+        "m720_triathlon",
+        "M720 Triathlon Multi-Device Mouse",
+        "logitech-mice/m720_triathlon/mouse.svg",
+        431,
+        341,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.355,
+                0.240,
+                label_side="left",
+                label_off_x=-170,
+                label_off_y=45,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.297,
+                0.721,
+                label_side="left",
+                label_off_x=-140,
+                label_off_y=58,
+            ),
+            _hotspot(
+                "hscroll_right",
+                "Scroll right",
+                "mapping",
+                0.385,
+                0.246,
+                label_side="right",
+                label_off_x=153,
+                label_off_y=-34,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Scroll left",
+                "mapping",
+                0.327,
+                0.235,
+                label_side="left",
+                label_off_x=-132,
+                label_off_y=-25,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.364,
+                0.516,
+                label_side="right",
+                label_off_x=145,
+                label_off_y=20,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.248,
+                0.551,
+                label_side="left",
+                label_off_x=-190,
+                label_off_y=27,
+            ),
+        ],
+        manual_selectable=True,
+    ),
+    # M650 Signature: no device art yet; shows generic silhouette with the
+    # three-button layout. Interactive hotspot diagram can be added once
+    # mouse artwork is sourced and product_ids are confirmed.
+    "m650": {
+        "key": "m650",
+        "label": "M650 Signature",
+        "image_asset": "icons/mouse-simple.svg",
+        "image_width": 220,
+        "image_height": 220,
+        "interactive": False,
+        "manual_selectable": True,
+        "note": (
+            "M650 Signature — middle click, back, and forward side buttons "
+            "are all configurable. No gesture button or horizontal scroll."
+        ),
+        "hotspots": [],
+    },
+    # M585/M590 Multi-Device Mouse: top-down render sourced from Logi Options+.
+    # Middle click (wheel press), back and forward thumb buttons, and the scroll
+    # wheel's left/right tilt are all configurable. The wheel has two distinct
+    # tilt arrows, so each direction gets its own hotspot (``hscroll_left`` /
+    # ``hscroll_right``); selecting the left tilt also reveals the combined
+    # left+right scroll editor shared with the MX Anywhere layouts.
+    "m585_m590": _layout(
+        "m585_m590",
+        "M585/M590 Multi-Device Mouse",
+        "logitech-mice/m585_m590/mouse.png",
+        419,
+        360,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.501,
+                0.235,
+                label_side="right",
+                label_off_x=150,
+                label_off_y=-40,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Scroll left",
+                "mapping",
+                0.45,
+                0.25,
+                label_side="left",
+                label_off_x=-170,
+                label_off_y=-45,
+            ),
+            _hotspot(
+                "hscroll_right",
+                "Scroll right",
+                "mapping",
+                0.554,
+                0.25,
+                label_side="right",
+                label_off_x=150,
+                label_off_y=35,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.28,
+                0.43,
+                label_side="left",
+                label_off_x=-180,
+                label_off_y=-10,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.285,
+                0.55,
+                label_side="left",
+                label_off_x=-170,
+                label_off_y=10,
+            ),
+        ],
+        manual_selectable=True,
+    ),
+    # Project-authored G502 schematics. The G-series controls do not expose
+    # REPROG_CONTROLS_V4; ordinary buttons/wheel tilt are mappable directly,
+    # while DPI/Profile/Sniper buttons become host-visible after the explicit
+    # G502 onboard unlock flow backs up and rewrites the active profile.
+    "g502": {
+        "key": "g502",
+        "label": "G502 / HERO / LIGHTSPEED",
+        "image_asset": "logitech-mice/g502/mouse.svg",
+        "image_width": 420,
+        "image_height": 520,
+        "interactive": True,
+        # Manual-selectable so G502 owners whose device connects with an
+        # unrecognized PID/name (e.g. via a receiver) can still pick the
+        # right button set from the layout dropdown.
+        "manual_selectable": True,
+        "note": G502_11_BUTTON_LAYOUT_NOTE,
+        "note_key": "layout_note.g502_11",
+        "physical_controls": G502_11_PHYSICAL_CONTROLS,
+        "button_labels": G502_MAPPABLE_BUTTON_LABELS,
+        "hotspots": [
+            _hotspot(
+                "g502_left_click",
+                "Left click",
+                "readonly",
+                0.393,
+                0.288,
+                label_side="left",
+                label_off_x=-72,
+                label_off_y=-115,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_primary",
+            ),
+            _hotspot(
+                "g502_right_click",
+                "Right click",
+                "readonly",
+                0.624,
+                0.288,
+                label_side="right",
+                label_off_x=72,
+                label_off_y=-90,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_primary",
+            ),
+            _hotspot(
+                "middle",
+                "Wheel click",
+                "mapping",
+                0.502,
+                0.333,
+                label_side="right",
+                label_off_x=128,
+                label_off_y=-45,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Wheel tilt left",
+                "hscroll",
+                0.436,
+                0.337,
+                label_side="left",
+                label_off_x=-142,
+                label_off_y=-40,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "hscroll_right",
+                "Wheel tilt right",
+                "hscroll",
+                0.567,
+                0.337,
+                label_side="right",
+                label_off_x=124,
+                label_off_y=0,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "g502_wheel_mode_shift",
+                "Wheel mode shift (mechanical)",
+                "readonly",
+                0.505,
+                0.502,
+                label_side="right",
+                label_off_x=118,
+                label_off_y=20,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_mechanical",
+            ),
+            _hotspot(
+                "g502_profile_cycle",
+                "Profile cycle",
+                "mapping",
+                0.502,
+                0.608,
+                label_side="right",
+                label_off_x=122,
+                label_off_y=45,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "g502_dpi_up",
+                "DPI up",
+                "mapping",
+                0.331,
+                0.254,
+                label_side="left",
+                label_off_x=-118,
+                label_off_y=-40,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "g502_dpi_down",
+                "DPI down",
+                "mapping",
+                0.319,
+                0.356,
+                label_side="left",
+                label_off_x=-118,
+                label_off_y=0,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward thumb button",
+                "mapping",
+                0.257,
+                0.535,
+                label_side="left",
+                label_off_x=-122,
+                label_off_y=5,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back thumb button",
+                "mapping",
+                0.240,
+                0.658,
+                label_side="left",
+                label_off_x=-136,
+                label_off_y=20,
+            ),
+            _hotspot(
+                "g502_dpi_shift",
+                "DPI Shift / sniper",
+                "mapping",
+                0.226,
+                0.765,
+                label_side="left",
+                label_off_x=-126,
+                label_off_y=35,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+        ],
+    },
+    "g502_x": {
+        "key": "g502_x",
+        "label": "G502 X / X LIGHTSPEED / X PLUS",
+        "image_asset": "logitech-mice/g502_x/mouse.svg",
+        "image_width": 420,
+        "image_height": 520,
+        "interactive": True,
+        "manual_selectable": True,
+        "note": G502_X_LAYOUT_NOTE,
+        "note_key": "layout_note.g502_x",
+        "physical_controls": G502_X_PHYSICAL_CONTROLS,
+        "button_labels": G502_MAPPABLE_BUTTON_LABELS,
+        "hotspots": [
+            _hotspot(
+                "g502_left_click",
+                "Left click",
+                "readonly",
+                0.402,
+                0.288,
+                label_side="left",
+                label_off_x=-70,
+                label_off_y=-115,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_primary",
+            ),
+            _hotspot(
+                "g502_right_click",
+                "Right click",
+                "readonly",
+                0.619,
+                0.288,
+                label_side="right",
+                label_off_x=70,
+                label_off_y=-122,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_primary",
+            ),
+            _hotspot(
+                "g502_scroll_up",
+                "Scroll up",
+                "readonly",
+                0.505,
+                0.258,
+                label_side="right",
+                label_off_x=116,
+                label_off_y=-54,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_scroll",
+            ),
+            _hotspot(
+                "middle",
+                "Wheel click",
+                "mapping",
+                0.505,
+                0.325,
+                label_side="right",
+                label_off_x=128,
+                label_off_y=-20,
+            ),
+            _hotspot(
+                "g502_scroll_down",
+                "Scroll down",
+                "readonly",
+                0.505,
+                0.389,
+                label_side="right",
+                label_off_x=116,
+                label_off_y=22,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_scroll",
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Wheel tilt left",
+                "hscroll",
+                0.436,
+                0.335,
+                label_side="left",
+                label_off_x=-142,
+                label_off_y=-45,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "hscroll_right",
+                "Wheel tilt right",
+                "hscroll",
+                0.569,
+                0.335,
+                label_side="right",
+                label_off_x=122,
+                label_off_y=92,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "g502_wheel_mode_shift",
+                "Wheel mode shift (mechanical)",
+                "readonly",
+                0.505,
+                0.502,
+                label_side="right",
+                label_off_x=118,
+                label_off_y=110,
+                status="readonly",
+                status_text_key="mouse.hotspot.readonly_mechanical",
+            ),
+            _hotspot(
+                "g502_profile_cycle",
+                "Profile cycle",
+                "mapping",
+                0.505,
+                0.606,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=154,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "g502_dpi_up",
+                "DPI up",
+                "mapping",
+                0.333,
+                0.252,
+                label_side="left",
+                label_off_x=-116,
+                label_off_y=-38,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "g502_dpi_down",
+                "DPI down",
+                "mapping",
+                0.324,
+                0.354,
+                label_side="left",
+                label_off_x=-120,
+                label_off_y=2,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward thumb button",
+                "mapping",
+                0.260,
+                0.535,
+                label_side="left",
+                label_off_x=-130,
+                label_off_y=10,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back thumb button",
+                "mapping",
+                0.243,
+                0.656,
+                label_side="left",
+                label_off_x=-140,
+                label_off_y=22,
+            ),
+            _hotspot(
+                "g502_dpi_shift",
+                "DPI Shift / sniper",
+                "mapping",
+                0.219,
+                0.746,
+                label_side="left",
+                label_off_x=-130,
+                label_off_y=36,
+                status="conditional",
+                status_text_key="mouse.hotspot.conditional",
+            ),
+        ],
+    },
+    "mx_master_4": _layout(
+        "mx_master_4",
+        "MX Master 4",
+        "logitech-mice/mx_master_4/mouse.png",
+        256,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.741,
+                0.226,
+                label_side="right",
+                label_off_x=85,
+                label_off_y=-16,
+            ),
+            _hotspot(
+                "actions_ring",
+                "Actions Ring",
+                "gesture",
+                0.289,
+                0.698,
+                label_side="left",
+                label_off_x=-75,
+                label_off_y=49,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.441,
+                0.496,
+                label_side="left",
+                label_off_x=-143,
+                label_off_y=-30,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.550,
+                0.510,
+                label_side="right",
+                label_off_x=138,
+                label_off_y=90,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.477,
+                0.590,
+                label_side="left",
+                label_off_x=-165,
+                label_off_y=18,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.403,
+                0.388,
+                label_side="left",
+                label_off_x=-62,
+                label_off_y=-57,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.810,
+                0.425,
+                label_side="right",
+                label_off_x=90,
+                label_off_y=9,
+            ),
+        ],
+        manual_selectable=True,
+    ),
+    "mx_master_3s": _layout(
+        "mx_master_3s",
+        "MX Master 3S",
+        "logitech-mice/mx_master_3s/mouse.png",
+        248,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.7,
+                0.1864,
+                label_side="right",
+                label_off_x=74,
+                label_off_y=-44,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.4227,
+                0.5522,
+                label_side="left",
+                label_off_x=-124,
+                label_off_y=108,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.3663,
+                0.4465,
+                label_side="left",
+                label_off_x=-63,
+                label_off_y=-90,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.095,
+                0.5978,
+                label_side="left",
+                label_off_x=-64,
+                label_off_y=-31,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.4959,
+                0.4639,
+                label_side="right",
+                label_off_x=157,
+                label_off_y=66,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.7994,
+                0.3741,
+                label_side="right",
+                label_off_x=78,
+                label_off_y=-14,
+            ),
+        ],
+    ),
+    "mx_master_3": _layout(
+        "mx_master_3",
+        "MX Master 3",
+        "logitech-mice/mx_master_3/mouse.png",
+        248,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.7,
+                0.1864,
+                label_side="right",
+                label_off_x=74,
+                label_off_y=-44,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.4227,
+                0.5522,
+                label_side="left",
+                label_off_x=-124,
+                label_off_y=108,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.3663,
+                0.4465,
+                label_side="left",
+                label_off_x=-63,
+                label_off_y=-90,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.095,
+                0.5978,
+                label_side="left",
+                label_off_x=-64,
+                label_off_y=-31,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.4959,
+                0.4639,
+                label_side="right",
+                label_off_x=157,
+                label_off_y=66,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.7994,
+                0.3741,
+                label_side="right",
+                label_off_x=78,
+                label_off_y=-14,
+            ),
+        ],
+    ),
+    "mx_master_2s": _layout(
+        "mx_master_2s",
+        "MX Master 2S",
+        "logitech-mice/mx_master_2s/mouse.png",
+        261,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.73,
+                0.18,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=-120,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.49,
+                0.70,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=20,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.47,
+                0.58,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=-30,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.13,
+                0.69,
+                label_side="left",
+                label_off_x=-260,
+                label_off_y=40,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.40,
+                0.46,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=-70,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.79,
+                0.36,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=0,
+            ),
+        ],
+    ),
+    "mx_master_classic": _layout(
+        "mx_master_classic",
+        "MX Master",
+        "logitech-mice/mx_master/mouse.png",
+        262,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.73,
+                0.18,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=-120,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.49,
+                0.70,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=20,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.47,
+                0.58,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=-30,
+            ),
+            _hotspot(
+                "gesture",
+                "Gesture button",
+                "gesture",
+                0.13,
+                0.69,
+                label_side="left",
+                label_off_x=-260,
+                label_off_y=40,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.40,
+                0.46,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=-70,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.79,
+                0.36,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=0,
+            ),
+        ],
+    ),
+    "mx_anywhere_2s": _layout(
+        "mx_anywhere_2s",
+        "MX Anywhere 2S",
+        "logitech-mice/mx_anywhere_2s/mouse.png",
+        253,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.52,
+                0.385,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=-120,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.02,
+                0.58,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=10,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.02,
+                0.44,
+                label_side="left",
+                label_off_x=-260,
+                label_off_y=-10,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.38,
+                0.195,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=-70,
+                is_hscroll=True,
+            ),
+        ],
+    ),
+    "mx_anywhere_3": _layout(
+        "mx_anywhere_3",
+        "MX Anywhere 3",
+        "logitech-mice/mx_anywhere_3/mouse.png",
+        239,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.72,
+                0.17,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=-120,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.28,
+                0.61,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=10,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.22,
+                0.43,
+                label_side="left",
+                label_off_x=-260,
+                label_off_y=-10,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.70,
+                0.19,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=-70,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.75,
+                0.34,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=0,
+            ),
+        ],
+    ),
+    "mx_anywhere_3s": _layout(
+        "mx_anywhere_3s",
+        "MX Anywhere 3S",
+        "logitech-mice/mx_anywhere_3s/mouse.png",
+        239,
+        400,
+        [
+            _hotspot(
+                "middle",
+                "Middle button",
+                "mapping",
+                0.71,
+                0.16,
+                label_side="right",
+                label_off_x=120,
+                label_off_y=-120,
+            ),
+            _hotspot(
+                "xbutton1",
+                "Back button",
+                "mapping",
+                0.28,
+                0.60,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=10,
+            ),
+            _hotspot(
+                "xbutton2",
+                "Forward button",
+                "mapping",
+                0.22,
+                0.41,
+                label_side="left",
+                label_off_x=-260,
+                label_off_y=-10,
+            ),
+            _hotspot(
+                "hscroll_left",
+                "Horizontal scroll",
+                "hscroll",
+                0.37,
+                0.24,
+                label_side="left",
+                label_off_x=-240,
+                label_off_y=-70,
+                is_hscroll=True,
+            ),
+            _hotspot(
+                "mode_shift",
+                "Mode shift button",
+                "mapping",
+                0.75,
+                0.34,
+                label_side="right",
+                label_off_x=160,
+                label_off_y=0,
+            ),
+        ],
+    ),
+}

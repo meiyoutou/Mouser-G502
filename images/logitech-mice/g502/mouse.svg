@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="520" viewBox="0 0 420 520" role="img" aria-label="G502 HERO clear button map">
+  <title>G502 / HERO / LIGHTSPEED clear schematic</title>
+  <desc>Project-authored top-view schematic inspired by public Logitech product views. Physical controls are separated into high-contrast button blocks so hotspots can align with the visible button centers.</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#363b41"/>
+      <stop offset="0.48" stop-color="#171b20"/>
+      <stop offset="1" stop-color="#07090c"/>
+    </linearGradient>
+    <linearGradient id="button" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#6c747d"/>
+      <stop offset="0.46" stop-color="#333a42"/>
+      <stop offset="1" stop-color="#101419"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#4e555d"/>
+      <stop offset="0.62" stop-color="#252a30"/>
+      <stop offset="1" stop-color="#0d1014"/>
+    </linearGradient>
+    <linearGradient id="wheel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a2a8ad"/>
+      <stop offset="0.5" stop-color="#555d65"/>
+      <stop offset="1" stop-color="#20262c"/>
+    </linearGradient>
+    <linearGradient id="thumb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#252c33"/>
+      <stop offset="1" stop-color="#070a0d"/>
+    </linearGradient>
+    <pattern id="rubber-ribs" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-25)">
+      <rect width="8" height="8" fill="none"/>
+      <path d="M0 0 L0 8" stroke="#6f7b86" stroke-width="1.5" opacity="0.26"/>
+    </pattern>
+    <filter id="shadow" x="-25%" y="-18%" width="150%" height="142%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#001326" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .outline { stroke:#77828d; stroke-width:3; stroke-linejoin:round; }
+      .button-outline { stroke:#8a96a2; stroke-width:2.4; stroke-linejoin:round; }
+      .seam { fill:none; stroke:#05070a; stroke-width:4; stroke-linecap:round; }
+      .thin-seam { fill:none; stroke:#7f8a95; stroke-width:1.8; opacity:.55; }
+      .hw-label { font:700 15px "Segoe UI", Arial, sans-serif; fill:#d9e1e8; paint-order:stroke; stroke:#05070a; stroke-width:3; stroke-linejoin:round; }
+      .mini-label { font:700 12px "Segoe UI", Arial, sans-serif; fill:#cbd4dd; paint-order:stroke; stroke:#05070a; stroke-width:3; stroke-linejoin:round; }
+    </style>
+  </defs>
+
+  <rect width="420" height="520" fill="none"/>
+
+  <!-- Cable and front strain relief. -->
+  <path d="M204 0 H218 V58 H204 Z" fill="#070a0d"/>
+  <path d="M190 48 H233 C236 48 239 51 239 55 V87 H184 V55 C184 51 187 48 190 48Z" fill="#11161b" stroke="#333a42" stroke-width="2"/>
+  <path d="M192 58 H236 M192 69 H236 M192 80 H236" stroke="#3a424a" stroke-width="5" stroke-linecap="round" opacity="0.72"/>
+
+  <g filter="url(#shadow)">
+    <!-- Main HERO shell, kept close to the official angular top silhouette. -->
+    <path class="outline" d="M210 42
+             C164 44 132 76 113 129
+             C92 188 84 283 93 370
+             C101 448 152 499 210 501
+             C271 502 321 454 337 375
+             C354 290 348 187 324 127
+             C304 76 263 45 222 42
+             C218 42 214 42 210 42Z" fill="url(#body)"/>
+
+    <!-- Distinct left/right primary click plates. -->
+    <path class="button-outline" d="M201 59
+             C169 62 141 88 128 128
+             L107 203
+             C103 225 113 247 132 260
+             L196 305
+             C201 277 203 242 203 210Z" fill="url(#primary)"/>
+    <path class="button-outline" d="M220 58
+             C266 63 302 96 317 145
+             C329 188 329 261 318 334
+             L248 312
+             C239 279 229 242 219 210Z" fill="url(#primary)"/>
+    <path class="seam" d="M203 60 L203 212"/>
+    <path class="seam" d="M220 59 L219 212"/>
+
+    <!-- Central spine and wheel cluster. -->
+    <path d="M195 63 H232
+             C243 94 248 142 245 190
+             L240 322
+             C230 336 212 341 199 327
+             C195 264 192 128 195 63Z"
+          fill="#06090c" stroke="#313942" stroke-width="2"/>
+    <rect x="185" y="119" width="54" height="111" rx="18" fill="#05070a" stroke="#313942" stroke-width="2.4"/>
+    <rect x="197" y="134" width="29" height="79" rx="13" fill="url(#wheel)" stroke="#151a1f" stroke-width="2"/>
+    <path d="M201 144 H222 M199 157 H224 M199 170 H224 M199 183 H224 M201 196 H222"
+          stroke="#b9c0c7" stroke-width="4" stroke-linecap="round" opacity=".58"/>
+    <path d="M177 173 L190 158 L190 202 L177 187 Z" fill="#252c33" stroke="#6d7884" stroke-width="2"/>
+    <path d="M246 173 L232 158 L232 202 L246 187 Z" fill="#252c33" stroke="#6d7884" stroke-width="2"/>
+    <rect x="189" y="244" width="46" height="34" rx="9" fill="url(#button)" stroke="#87929d" stroke-width="2"/>
+    <path d="M207 253 A8 8 0 1 1 218 264" fill="none" stroke="#06090c" stroke-width="2.3" stroke-linecap="round"/>
+    <path d="M219 257 L223 262 L216 263 Z" fill="#06090c"/>
+    <path d="M190 294 L233 287 L238 336 L196 343 Z" fill="url(#button)" stroke="#87929d" stroke-width="2"/>
+    <text x="211" y="319" text-anchor="middle" class="hw-label">G9</text>
+
+    <!-- G8/G7 DPI controls: separated and moved onto the left edge of the left button. -->
+    <path class="button-outline" d="M115 116 L155 96 L165 139 L124 160 Z" fill="url(#button)"/>
+    <path class="button-outline" d="M106 169 L151 145 L162 191 L116 216 Z" fill="url(#button)"/>
+    <text x="139" y="136" text-anchor="middle" class="mini-label">G8</text>
+    <text x="134" y="189" text-anchor="middle" class="mini-label">G7</text>
+    <path d="M135 122 L142 113 L149 122" fill="none" stroke="#d7dee5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M129 197 L136 206 L143 197" fill="none" stroke="#d7dee5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Left-side thumb buttons: three independent, high-contrast blocks. -->
+    <path class="button-outline" d="M66 255 C86 238 122 239 149 260 L139 300 C109 283 81 287 62 312 Z" fill="url(#button)"/>
+    <path class="button-outline" d="M58 319 C83 298 119 303 144 333 L134 374 C103 349 76 354 56 386 Z" fill="url(#button)"/>
+    <path class="button-outline" d="M55 382 C75 358 112 363 136 394 L126 436 C95 412 70 418 57 450 C47 428 47 402 55 382Z" fill="#20272e"/>
+    <text x="108" y="278" text-anchor="middle" class="mini-label">G5</text>
+    <text x="101" y="342" text-anchor="middle" class="mini-label">G4</text>
+    <text x="95" y="399" text-anchor="middle" class="mini-label">DPI</text>
+
+    <!-- Thumb rest and rubber texture behind the distinct buttons. -->
+    <path d="M68 395 C82 428 111 454 150 462
+             C154 422 149 379 135 344
+             C105 350 78 366 68 395Z"
+          fill="url(#rubber-ribs)" opacity=".78" stroke="#313942" stroke-width="2"/>
+
+    <!-- Blue HERO DPI light strip and palm accent; kept below buttons so they are not mistaken for controls. -->
+    <path d="M126 271 L132 258" stroke="#24bdf3" stroke-width="6" stroke-linecap="round"/>
+    <path d="M119 300 L126 284" stroke="#24bdf3" stroke-width="6" stroke-linecap="round" opacity=".9"/>
+    <path d="M112 329 L120 310" stroke="#24bdf3" stroke-width="6" stroke-linecap="round" opacity=".78"/>
+    <path d="M162 390 C176 376 198 374 214 389" fill="none" stroke="#24bdf3" stroke-width="9" stroke-linecap="round" opacity=".34"/>
+
+    <!-- Palm shell cuts. -->
+    <path d="M101 360 C137 339 176 340 210 358 C247 338 289 342 323 368 C312 445 267 491 211 493 C154 491 113 444 101 360Z"
+          fill="#090c10" opacity=".38"/>
+    <path class="seam" d="M132 260 C158 286 180 304 199 327"/>
+    <path class="seam" d="M248 312 C275 326 302 345 323 368"/>
+    <path class="seam" d="M211 358 C206 404 207 459 211 494"/>
+    <path class="thin-seam" d="M318 145 C331 201 332 268 319 334"/>
+  </g>
+</svg>

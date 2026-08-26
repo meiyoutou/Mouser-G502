@@ -1,0 +1,120 @@
+"""
+Shared mouse hook types and helpers.
+"""
+
+from dataclasses import dataclass
+import time
+from typing import Any
+
+
+@dataclass(frozen=True)
+class HidRuntimeState:
+    """Read-only snapshot of hook input and HID++ readiness."""
+
+    input_ready: bool = False
+    hid_ready: bool = False
+    connected_device: Any = None
+
+
+class MouseEvent:
+    """Represents a captured mouse event."""
+
+    XBUTTON1_DOWN = "xbutton1_down"
+    XBUTTON1_UP = "xbutton1_up"
+    XBUTTON2_DOWN = "xbutton2_down"
+    XBUTTON2_UP = "xbutton2_up"
+    MIDDLE_DOWN = "middle_down"
+    MIDDLE_UP = "middle_up"
+    # ── Gesture button (thumb) — config key "gesture" ───────────────
+    # The physical "Gesture button": the *primary* gesture control on the
+    # MX Master 3/3S/classic, and the small thumb-area button (CID 0x00C3)
+    # on the MX Master 4. Its click/hold/swipes always use this family so
+    # the button behaves identically across the whole device lineup.
+    GESTURE_CLICK = "gesture_click"
+    GESTURE_BUTTON_DOWN = "gesture_button_down"
+    GESTURE_BUTTON_UP = "gesture_button_up"
+    GESTURE_SWIPE_LEFT = "gesture_swipe_left"
+    GESTURE_SWIPE_RIGHT = "gesture_swipe_right"
+    GESTURE_SWIPE_UP = "gesture_swipe_up"
+    GESTURE_SWIPE_DOWN = "gesture_swipe_down"
+    # ── Sense Panel ("Actions Ring") — config key "actions_ring" ────
+    # The MX Master 4's large touch/press panel (CID 0x01A0), the primary
+    # gesture control on that device. MX4-only; other devices never emit
+    # this family.
+    SENSE_CLICK = "sense_click"
+    SENSE_BUTTON_DOWN = "sense_button_down"
+    SENSE_BUTTON_UP = "sense_button_up"
+    SENSE_SWIPE_LEFT = "sense_swipe_left"
+    SENSE_SWIPE_RIGHT = "sense_swipe_right"
+    SENSE_SWIPE_UP = "sense_swipe_up"
+    SENSE_SWIPE_DOWN = "sense_swipe_down"
+    # ── Per-button slide gestures (back/forward/middle, all platforms) ──
+    # Fired when an ordinary button armed as a gesture pad ("gesture_swipe")
+    # is held and slid. The owning button is carried in raw_data["gesture_owner"]
+    # (one of "middle"/"xbutton1"/"xbutton2") so the engine routes the swipe to
+    # the "<owner>_<direction>" binding. Not tied to any HID++ control.
+    BUTTON_SWIPE_LEFT = "button_swipe_left"
+    BUTTON_SWIPE_RIGHT = "button_swipe_right"
+    BUTTON_SWIPE_UP = "button_swipe_up"
+    BUTTON_SWIPE_DOWN = "button_swipe_down"
+    # Quick tap of a gesture-pad button (no slide): fires the button's in-gesture
+    # tap action. Owner carried in raw_data["gesture_owner"].
+    BUTTON_TAP = "button_tap"
+    HSCROLL_LEFT = "hscroll_left"
+    HSCROLL_RIGHT = "hscroll_right"
+    MOUSE_BUTTON_6_DOWN = "mouse_button_6_down"
+    MOUSE_BUTTON_6_UP = "mouse_button_6_up"
+    MOUSE_BUTTON_9_DOWN = "mouse_button_9_down"
+    MOUSE_BUTTON_9_UP = "mouse_button_9_up"
+    MOUSE_BUTTON_10_DOWN = "mouse_button_10_down"
+    MOUSE_BUTTON_10_UP = "mouse_button_10_up"
+    MOUSE_BUTTON_11_DOWN = "mouse_button_11_down"
+    MOUSE_BUTTON_11_UP = "mouse_button_11_up"
+    MOUSE_BUTTON_DPI_DOWN = "mouse_button_dpi_down"
+    MOUSE_BUTTON_DPI_UP = "mouse_button_dpi_up"
+    G502_DPI_SHIFT_DOWN = "g502_dpi_shift_down"
+    G502_DPI_SHIFT_UP = "g502_dpi_shift_up"
+    G502_DPI_DOWN_DOWN = "g502_dpi_down_down"
+    G502_DPI_DOWN_UP = "g502_dpi_down_up"
+    G502_DPI_UP_DOWN = "g502_dpi_up_down"
+    G502_DPI_UP_UP = "g502_dpi_up_up"
+    G502_PROFILE_CYCLE_DOWN = "g502_profile_cycle_down"
+    G502_PROFILE_CYCLE_UP = "g502_profile_cycle_up"
+    MODE_SHIFT_DOWN = "mode_shift_down"
+    MODE_SHIFT_UP = "mode_shift_up"
+    DPI_SWITCH_DOWN = "dpi_switch_down"
+    DPI_SWITCH_UP = "dpi_switch_up"
+
+    def __init__(self, event_type, raw_data=None):
+        self.event_type = event_type
+        self.raw_data = raw_data
+        self.timestamp = time.time()
+
+
+def hscroll_event_type(delta):
+    """Map a horizontal-wheel delta to its event type.
+
+    Every platform hook feeds this the raw delta it receives, and all of them
+    report a **positive** value for a rightward tilt/scroll: Win32's
+    ``WM_MOUSEHWHEEL`` documents it, Linux's ``REL_HWHEEL`` follows the same
+    convention, and the Quartz axis-2 delta matches. Keeping the decision in
+    one place is deliberate -- the Windows hook had the two swapped for months
+    (issue #253: tilting the wheel right fired the *left* binding) precisely
+    because each platform spelled the comparison out for itself.
+
+    Returns an empty string for a zero delta, which is not a direction.
+    """
+    if delta > 0:
+        return MouseEvent.HSCROLL_RIGHT
+    if delta < 0:
+        return MouseEvent.HSCROLL_LEFT
+    return ""
+
+
+def format_debug_details(raw_data):
+    if raw_data is None:
+        return ""
+    if isinstance(raw_data, dict):
+        parts = [f"{key}={value}" for key, value in raw_data.items()]
+        return " " + " ".join(parts)
+    return f" value={raw_data}"

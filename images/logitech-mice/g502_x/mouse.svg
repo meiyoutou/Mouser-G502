@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="520" viewBox="0 0 420 520" role="img" aria-label="G502 X clear button map">
+  <title>G502 X / X LIGHTSPEED / X PLUS clear schematic</title>
+  <desc>Project-authored top-view schematic inspired by public Logitech product views. Buttons are drawn as separated blocks with clear outlines so the interactive hotspot dots align with visible control centers.</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#444a51"/>
+      <stop offset="0.52" stop-color="#1d2228"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#59616a"/>
+      <stop offset="0.58" stop-color="#2b3138"/>
+      <stop offset="1" stop-color="#0b0e12"/>
+    </linearGradient>
+    <linearGradient id="button" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#838c96"/>
+      <stop offset="0.46" stop-color="#414951"/>
+      <stop offset="1" stop-color="#12171d"/>
+    </linearGradient>
+    <linearGradient id="wheel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8d949c"/>
+      <stop offset="0.54" stop-color="#4a525a"/>
+      <stop offset="1" stop-color="#1a2026"/>
+    </linearGradient>
+    <pattern id="rubber-ribs" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">
+      <rect width="7" height="7" fill="none"/>
+      <path d="M0 0 L0 7" stroke="#7b8792" stroke-width="1.5" opacity=".28"/>
+    </pattern>
+    <filter id="shadow" x="-25%" y="-18%" width="150%" height="142%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#001326" flood-opacity="0.25"/>
+    </filter>
+    <style>
+      .outline { stroke:#78838e; stroke-width:3; stroke-linejoin:round; }
+      .button-outline { stroke:#93a0ab; stroke-width:2.4; stroke-linejoin:round; }
+      .seam { fill:none; stroke:#05070a; stroke-width:4; stroke-linecap:round; }
+      .thin-seam { fill:none; stroke:#84909b; stroke-width:1.8; opacity:.55; }
+      .hw-label { font:700 15px "Segoe UI", Arial, sans-serif; fill:#e2e8ee; paint-order:stroke; stroke:#05070a; stroke-width:3; stroke-linejoin:round; }
+      .mini-label { font:700 12px "Segoe UI", Arial, sans-serif; fill:#d7dfe7; paint-order:stroke; stroke:#05070a; stroke-width:3; stroke-linejoin:round; }
+    </style>
+  </defs>
+
+  <rect width="420" height="520" fill="none"/>
+
+  <!-- Wired/charging cable reference. -->
+  <path d="M204 0 H218 V58 H204 Z" fill="#070a0d" opacity=".9"/>
+
+  <g filter="url(#shadow)">
+    <!-- Smoother, wider-front G502 X shell. -->
+    <path class="outline" d="M210 42
+             C158 43 127 76 108 130
+             C88 189 80 287 89 369
+             C98 449 151 497 209 499
+             C274 500 325 454 341 374
+             C358 289 351 187 326 124
+             C305 74 262 45 221 42
+             C217 42 213 42 210 42Z" fill="url(#body)"/>
+
+    <!-- Large primary click plates with very clear split lines. -->
+    <path class="button-outline" d="M202 58
+             C166 61 138 87 125 130
+             L105 206
+             C101 228 112 249 131 262
+             L197 307
+             C202 280 204 244 204 211Z" fill="url(#primary)"/>
+    <path class="button-outline" d="M220 57
+             C266 62 303 96 318 146
+             C329 190 329 263 318 334
+             L247 312
+             C238 279 228 242 219 211Z" fill="url(#primary)"/>
+    <path class="seam" d="M204 59 L204 212"/>
+    <path class="seam" d="M220 58 L219 212"/>
+
+    <!-- Central spine, scroll wheel, tilt buttons, wheel-mode and profile controls. -->
+    <path d="M195 62 H232
+             C243 94 248 142 245 190
+             L240 323
+             C231 339 212 343 199 328
+             C195 263 192 128 195 62Z"
+          fill="#06090c" stroke="#333b44" stroke-width="2"/>
+    <rect x="184" y="112" width="56" height="117" rx="18" fill="#05070a" stroke="#313942" stroke-width="2.4"/>
+    <rect x="198" y="126" width="28" height="85" rx="13" fill="url(#wheel)" stroke="#151a1f" stroke-width="2"/>
+    <path d="M203 132 L222 202 M208 130 L226 198 M199 144 L220 208"
+          stroke="#b1b8c0" stroke-width="3.2" stroke-linecap="round" opacity=".55"/>
+    <path d="M176 172 L190 157 L190 203 L176 188 Z" fill="#252c33" stroke="#71808b" stroke-width="2"/>
+    <path d="M247 172 L233 157 L233 203 L247 188 Z" fill="#252c33" stroke="#71808b" stroke-width="2"/>
+    <rect x="190" y="244" width="44" height="35" rx="9" fill="url(#button)" stroke="#93a0ab" stroke-width="2"/>
+    <path d="M207 253 A8 8 0 1 1 218 264" fill="none" stroke="#06090c" stroke-width="2.3" stroke-linecap="round"/>
+    <path d="M219 257 L223 262 L216 263 Z" fill="#06090c"/>
+    <rect x="193" y="293" width="38" height="43" rx="9" fill="url(#button)" stroke="#93a0ab" stroke-width="2"/>
+    <text x="212" y="320" text-anchor="middle" class="hw-label">G9</text>
+
+    <!-- G8/G7 DPI controls: flatter X-series buttons, separated from side buttons. -->
+    <path class="button-outline" d="M116 116 L158 98 L166 138 L124 158 Z" fill="url(#button)"/>
+    <path class="button-outline" d="M109 166 L153 146 L163 188 L118 211 Z" fill="url(#button)"/>
+    <text x="140" y="135" text-anchor="middle" class="mini-label">G8</text>
+    <text x="136" y="184" text-anchor="middle" class="mini-label">G7</text>
+    <path d="M136 121 L143 113 L150 121" fill="none" stroke="#e0e6ec" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M131 191 L138 199 L145 191" fill="none" stroke="#e0e6ec" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- G5/G4 side buttons: visible blocks on the left flank. -->
+    <path class="button-outline" d="M67 254 C88 237 124 239 151 262 L141 302 C110 284 82 288 62 314 Z" fill="url(#button)"/>
+    <path class="button-outline" d="M59 315 C83 296 119 302 146 333 L136 371 C104 349 77 353 56 382 Z" fill="url(#button)"/>
+    <text x="109" y="278" text-anchor="middle" class="mini-label">G5</text>
+    <text x="102" y="341" text-anchor="middle" class="mini-label">G4</text>
+
+    <!-- X-series removable/reversible DPI Shift paddle, separated below the thumb buttons. -->
+    <path class="button-outline" d="M50 365
+             C68 339 105 341 135 373
+             L125 421
+             C93 399 69 405 54 440
+             C43 417 42 389 50 365Z" fill="#20272e"/>
+    <path d="M68 398 L101 371" stroke="#c8d0d8" stroke-width="3.2" stroke-linecap="round" opacity=".75"/>
+    <text x="92" y="388" text-anchor="middle" class="mini-label">DPI</text>
+
+    <!-- Textured thumb rest behind side controls. -->
+    <path d="M69 395 C83 430 114 456 154 462
+             C156 422 150 380 136 347
+             C105 352 80 367 69 395Z"
+          fill="url(#rubber-ribs)" opacity=".82" stroke="#323b44" stroke-width="2"/>
+
+    <!-- Palm cuts and subtle G-series accent. -->
+    <path d="M101 360 C136 337 176 339 210 358
+             C247 338 289 342 322 368
+             C311 444 268 489 211 491
+             C154 489 113 443 101 360Z"
+          fill="#090c10" opacity=".36"/>
+    <path class="seam" d="M131 262 C159 288 181 307 199 328"/>
+    <path class="seam" d="M247 312 C276 326 303 346 322 368"/>
+    <path class="thin-seam" d="M318 146 C331 203 332 270 320 334"/>
+    <path d="M151 391 C166 379 192 377 209 390" fill="none" stroke="#4c6cff" stroke-width="8" stroke-linecap="round" opacity=".22"/>
+  </g>
+</svg>
