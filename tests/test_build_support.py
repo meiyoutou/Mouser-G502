@@ -62,7 +62,8 @@ class LinuxPermissionPackagingTests(unittest.TestCase):
         )
 
         self.assertTrue(os.path.isfile(helper))
-        self.assertTrue(os.stat(helper).st_mode & stat.S_IXUSR)
+        if os.name == "posix":
+            self.assertTrue(os.stat(helper).st_mode & stat.S_IXUSR)
         self.assertTrue(os.path.isfile(rules))
 
     def test_linux_spec_packages_linux_files_into_linux_directory(self):

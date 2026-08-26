@@ -160,9 +160,12 @@ def build_number_from_version(version: str) -> int:
     value = (version or "").strip()
     if value.startswith("v"):
         value = value[1:]
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value)
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", value)
     if not match:
-        raise UpdateInstallError("invalid_version", "Version must be major.minor.patch.")
+        raise UpdateInstallError(
+            "invalid_version",
+            "Version must start with major.minor.patch.",
+        )
     major, minor, patch = (int(part) for part in match.groups())
     return major * 10000 + minor * 100 + patch
 

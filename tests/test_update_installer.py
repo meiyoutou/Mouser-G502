@@ -145,6 +145,11 @@ class UpdateInstallerTests(unittest.TestCase):
     def test_build_number_from_version_uses_semver_digits(self):
         self.assertEqual(build_number_from_version("v3.7.0"), 30700)
         self.assertEqual(build_number_from_version("3.7.12"), 30712)
+        self.assertEqual(build_number_from_version("v3.7.11-g502-f13f16-cn-i18n-sync"), 30711)
+        self.assertEqual(
+            manifest_name_for_version("v3.7.11-g502-f13f16-cn-i18n-sync"),
+            "mouser-v3.7.11-g502-f13f16-cn-i18n-sync-update.json",
+        )
         with self.assertRaises(UpdateInstallError):
             build_number_from_version("3.7")
 
