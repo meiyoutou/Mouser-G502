@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from PIL import Image, ImageGrab
-from PySide6.QtCore import QObject, QRect, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QRect, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QGuiApplication
 
 from ui.screenshot_common import (
@@ -30,6 +30,14 @@ from ui.screenshot_overlay import (
     rect_from_qrect as _rect_from_qrect,
     union_rect as _union_rect,
 )
+
+
+# The Actions Ring hides with a short fade-out animation. Screenshot actions can
+# be fired from that ring, so capturing immediately bakes the ring (and sometimes
+# a just-opened Windows shell transition such as Task View) into the screenshot
+# background. Wait a little longer than the ring dismiss animation before reading
+# the desktop pixels.
+WINDOWS_SCREENSHOT_SETTLE_DELAY_MS = 220
 
 
 @dataclass(frozen=True)
@@ -173,11 +181,14 @@ class WindowsScreenshotController(QObject):
         self,
         status_callback: Callable[[str], None] | None = None,
         path_factory: Callable[[], object] | None = None,
+        settle_delay_ms: int = WINDOWS_SCREENSHOT_SETTLE_DELAY_MS,
         parent=None,
     ):
         super().__init__(parent)
         self._status_callback = status_callback
         self._path_factory = path_factory
+        self._settle_delay_ms = max(0, int(settle_delay_ms))
+        self._capture_pending = False
         self._overlay: RegionSelectionOverlay | None = None
         self._pending_capture: VirtualCapture | None = None
         self._pending_action = ""
@@ -188,6 +199,22 @@ class WindowsScreenshotController(QObject):
 
     @Slot(str)
     def _handle_request(self, action_id: str) -> None:
+        if action_id not in SCREENSHOT_ACTIONS:
+            return
+        if self._overlay is not None or self._capture_pending:
+            self._emit_status("Finish the current screenshot selection first")
+            return
+        self._capture_pending = True
+        if self._settle_delay_ms <= 0:
+            self._begin_capture_request(action_id)
+        else:
+            QTimer.singleShot(
+                self._settle_delay_ms,
+                lambda action_id=action_id: self._begin_capture_request(action_id),
+            )
+
+    def _begin_capture_request(self, action_id: str) -> None:
+        self._capture_pending = False
         if action_id not in SCREENSHOT_ACTIONS:
             return
         if self._overlay is not None:
