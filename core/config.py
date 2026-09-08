@@ -5,9 +5,14 @@ Supports per-application profiles (for future use).
 
 import json
 import os
+import re
+import shutil
 import stat
 import sys
 import tempfile
+import time
+import zipfile
+from datetime import datetime, timezone
 from urllib.parse import quote
 from core import app_catalog
 
@@ -21,6 +26,14 @@ elif sys.platform == "linux":
 else:
     CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Mouser")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+CONFIG_BACKUP_DIRNAME = "config_backups"
+CONFIG_BACKUP_DIR = os.path.join(CONFIG_DIR, CONFIG_BACKUP_DIRNAME)
+CONFIG_BACKUP_KEEP = 50
+CONFIG_BROKEN_KEEP = 20
+CONFIG_AUTO_BACKUP_INTERVAL_SECONDS = 5 * 60
+CONFIG_EXPORT_FORMAT = "mouser-user-config"
+
+_LAST_AUTO_BACKUP_AT = 0.0
 
 # Which mouse events map to which friendly button names
 # Order matches the Logi Options+ diagram (top view then side view)
@@ -373,6 +386,154 @@ def ensure_config_dir():
     os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
 
 
+def config_backup_dir():
+    """Return the backup directory derived from the active config directory."""
+    return os.path.join(CONFIG_DIR, CONFIG_BACKUP_DIRNAME)
+
+
+def _deepcopy_defaults():
+    return json.loads(json.dumps(DEFAULT_CONFIG))
+
+
+def _normalise_config(cfg):
+    """Return a migrated, default-filled, type-checked config dict."""
+    if not isinstance(cfg, dict):
+        raise ValueError("Config root must be a JSON object")
+    cfg = _migrate(cfg)
+    cfg = _merge_defaults(cfg, DEFAULT_CONFIG)
+    cfg = _validate_types(cfg, DEFAULT_CONFIG)
+    return cfg
+
+
+def _timestamp():
+    return datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+
+
+def _safe_reason(reason):
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(reason or "manual")).strip("_")
+    return safe[:40] or "manual"
+
+
+def _read_json_file(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _write_json_file(path, obj):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+
+
+def list_config_backups():
+    """Return restoreable config backup paths, oldest first."""
+    backup_dir = config_backup_dir()
+    if not os.path.isdir(backup_dir):
+        return []
+    paths = []
+    for name in os.listdir(backup_dir):
+        if (
+            name.lower().endswith(".json")
+            and re.match(r"^config_\d{8}-\d{6}(?:-\d+)?_", name)
+        ):
+            paths.append(os.path.join(backup_dir, name))
+    return sorted(paths)
+
+
+def _list_broken_config_copies():
+    """Return preserved corrupted config paths, oldest first."""
+    backup_dir = config_backup_dir()
+    if not os.path.isdir(backup_dir):
+        return []
+    return sorted(
+        os.path.join(backup_dir, name)
+        for name in os.listdir(backup_dir)
+        if name.lower().endswith(".json") and name.startswith("config_broken_")
+    )
+
+
+def _prune_paths(paths, keep):
+    excess = len(paths) - keep
+    if excess <= 0:
+        return
+    for path in paths[:excess]:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _prune_config_backups():
+    _prune_paths(list_config_backups(), CONFIG_BACKUP_KEEP)
+    _prune_paths(_list_broken_config_copies(), CONFIG_BROKEN_KEEP)
+
+
+def backup_config(reason="manual", force=False):
+    """Copy the current config file into the rolling user-config backups.
+
+    Returns the backup path, or an empty string if there is no readable config
+    to back up. Only valid JSON is copied, so a corrupted config never becomes
+    the latest restore candidate.
+    """
+    if not os.path.exists(CONFIG_FILE):
+        return ""
+    try:
+        _read_json_file(CONFIG_FILE)
+    except Exception as exc:
+        print(f"[Config] Skipping backup of unreadable config: {exc}")
+        return ""
+    ensure_config_dir()
+    backup_dir = config_backup_dir()
+    os.makedirs(backup_dir, mode=0o700, exist_ok=True)
+    suffix = "_forced" if force else ""
+    backup_path = os.path.join(
+        backup_dir,
+        f"config_{_timestamp()}_{_safe_reason(reason)}{suffix}.json",
+    )
+    shutil.copy2(CONFIG_FILE, backup_path)
+    _prune_config_backups()
+    return backup_path
+
+
+def _maybe_auto_backup_config():
+    global _LAST_AUTO_BACKUP_AT
+    if not os.path.exists(CONFIG_FILE):
+        return ""
+    now = time.monotonic()
+    if now - _LAST_AUTO_BACKUP_AT < CONFIG_AUTO_BACKUP_INTERVAL_SECONDS:
+        return ""
+    path = backup_config(reason="auto_save", force=False)
+    if path:
+        _LAST_AUTO_BACKUP_AT = now
+    return path
+
+
+def _preserve_unreadable_config():
+    """Keep a copy of a broken config before attempting recovery."""
+    if not os.path.exists(CONFIG_FILE):
+        return ""
+    ensure_config_dir()
+    backup_dir = config_backup_dir()
+    os.makedirs(backup_dir, mode=0o700, exist_ok=True)
+    path = os.path.join(backup_dir, f"config_broken_{_timestamp()}.json")
+    try:
+        shutil.copy2(CONFIG_FILE, path)
+        _prune_config_backups()
+        return path
+    except OSError as exc:
+        print(f"[Config] Could not preserve unreadable config: {exc}")
+        return ""
+
+
+def load_latest_valid_backup():
+    """Return the newest readable backup config, or None if none can load."""
+    for path in reversed(list_config_backups()):
+        try:
+            return _normalise_config(_read_json_file(path))
+        except Exception as exc:
+            print(f"[Config] Skipping invalid backup {path}: {exc}")
+    return None
+
+
 def load_config():
     """Load config from disk, or return defaults if none exists."""
     ensure_config_dir()
@@ -380,14 +541,18 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            # Merge any missing keys from default
-            cfg = _migrate(cfg)
-            cfg = _merge_defaults(cfg, DEFAULT_CONFIG)
-            cfg = _validate_types(cfg, DEFAULT_CONFIG)
-            return cfg
+            return _normalise_config(cfg)
         except Exception as e:
             print(f"[Config] Error loading config: {e}")
-    return json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
+            _preserve_unreadable_config()
+            recovered = load_latest_valid_backup()
+            if recovered is not None:
+                try:
+                    _atomic_write_json(CONFIG_FILE, recovered)
+                except Exception as save_exc:
+                    print(f"[Config] Could not restore backup config: {save_exc}")
+                return recovered
+    return _deepcopy_defaults()
 
 
 def _atomic_write_json(path, obj):
@@ -414,7 +579,95 @@ def _atomic_write_json(path, obj):
 
 def save_config(cfg):
     """Persist config to disk via atomic write with restrictive permissions."""
+    _maybe_auto_backup_config()
     _atomic_write_json(CONFIG_FILE, cfg)
+
+
+def _export_metadata(cfg):
+    try:
+        from core.version import APP_VERSION
+    except Exception:
+        app_version = ""
+    else:
+        app_version = APP_VERSION
+    return {
+        "format": CONFIG_EXPORT_FORMAT,
+        "format_version": 1,
+        "app": "Mouser",
+        "app_version": app_version,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "config_version": cfg.get("version"),
+        "contents": ["config.json"],
+    }
+
+
+def export_user_config(destination_path):
+    """Export shortcuts and personal settings to a .zip or .json file."""
+    if not destination_path:
+        raise ValueError("Destination path is required")
+    destination_path = os.path.abspath(os.path.expanduser(str(destination_path)))
+    parent = os.path.dirname(destination_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    cfg = load_config()
+    lower = destination_path.lower()
+    if lower.endswith(".json"):
+        _atomic_write_json(destination_path, cfg)
+        return destination_path
+
+    if not lower.endswith(".zip"):
+        destination_path += ".zip"
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip.tmp", dir=os.path.dirname(destination_path) or None)
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("config.json", json.dumps(cfg, indent=2))
+            zf.writestr("metadata.json", json.dumps(_export_metadata(cfg), indent=2))
+        os.replace(tmp_path, destination_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    return destination_path
+
+
+def _load_import_config(source_path):
+    if not source_path:
+        raise ValueError("Source path is required")
+    source_path = os.path.abspath(os.path.expanduser(str(source_path)))
+    if not os.path.exists(source_path):
+        raise FileNotFoundError(source_path)
+
+    if source_path.lower().endswith(".zip"):
+        with zipfile.ZipFile(source_path, "r") as zf:
+            names = set(zf.namelist())
+            if "config.json" not in names:
+                raise ValueError("Backup zip does not contain config.json")
+            with zf.open("config.json") as f:
+                raw = f.read().decode("utf-8")
+        return json.loads(raw)
+
+    return _read_json_file(source_path)
+
+
+def import_user_config(source_path):
+    """Import a user config backup and return the loaded config dict.
+
+    The current config is backed up before replacement, so users can roll back
+    if they picked the wrong file.
+    """
+    imported = _normalise_config(_load_import_config(source_path))
+    backup_config(reason="before_import", force=True)
+    _atomic_write_json(CONFIG_FILE, imported)
+    return imported
+
+
+# Back-compat names for callers/tests that use the earlier design wording.
+export_config_bundle = export_user_config
+import_config_bundle = import_user_config
 
 
 

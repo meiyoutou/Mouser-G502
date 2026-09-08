@@ -53,6 +53,13 @@ Item {
         return s["scroll.update_idle"]
     }
 
+    Connections {
+        target: backend
+        function onUserConfigImported(language) {
+            lm.setLanguage(language)
+        }
+    }
+
     readonly property var appearanceOptions: [
         { label: s["scroll.system"], value: "system" },
         { label: s["scroll.light"],  value: "light"  },
@@ -786,6 +793,77 @@ Item {
                                     onClicked: scrollPage.selectLanguage(modelData.code)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            Item { width: 1; height: 16 }
+
+            // ── Config Backup ─────────────────────────────────────
+            Rectangle {
+                width: parent.width - 72
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: configBackupContent.implicitHeight + 40
+                radius: Theme.radius
+                color: scrollPage.theme.bgCard
+                border.width: 1
+                border.color: scrollPage.theme.border
+
+                Column {
+                    id: configBackupContent
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        margins: 20
+                    }
+                    spacing: 12
+
+                    Text {
+                        text: s["scroll.config_backup"]
+                        font {
+                            family: uiState.fontFamily
+                            pixelSize: 16
+                            bold: true
+                        }
+                        color: scrollPage.theme.textPrimary
+                    }
+
+                    Text {
+                        text: s["scroll.config_backup_desc"]
+                        font {
+                            family: uiState.fontFamily
+                            pixelSize: 12
+                        }
+                        color: scrollPage.theme.textSecondary
+                        wrapMode: Text.WordWrap
+                        width: parent.width
+                    }
+
+                    RowLayout {
+                        width: parent.width
+                        spacing: 10
+
+                        Button {
+                            text: s["scroll.config_export"]
+                            Layout.preferredHeight: 34
+                            Accessible.name: s["scroll.config_export"]
+                            onClicked: backend.exportUserConfig()
+                        }
+
+                        Button {
+                            text: s["scroll.config_import"]
+                            Layout.preferredHeight: 34
+                            Accessible.name: s["scroll.config_import"]
+                            onClicked: backend.importUserConfig()
+                        }
+
+                        Button {
+                            text: s["scroll.config_open_folder"]
+                            Layout.preferredHeight: 34
+                            Accessible.name: s["scroll.config_open_folder"]
+                            onClicked: backend.openConfigFolder()
                         }
                     }
                 }

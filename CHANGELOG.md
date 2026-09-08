@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.7.14
+
+This release adds user settings backup and migration support for the G502 fork.
+
+### Added
+
+- Settings page controls to export, import, and open the Mouser settings folder.
+- Export/import for shortcut mappings, profiles, actions ring slots, and personal settings.
+- Automatic rolling backups before config saves, stored locally under the user settings folder.
+- Corrupted config recovery: Mouser preserves the broken file, then restores from the latest valid backup when possible.
+- English, Simplified Chinese, and Traditional Chinese labels for the new backup UI and status prompts.
+
+### Notes
+
+- Exported settings bundles contain `config.json` and `metadata.json` only.
+- Public source and release packages do not include personal config, logs, screenshots, or G502 onboard-memory backups.
+
 ## v3.7.12-g502-screenshot-fix
 
 This release fixes a Windows screenshot timing issue in the G502 fork.

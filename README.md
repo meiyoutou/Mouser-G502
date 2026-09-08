@@ -10,8 +10,8 @@
 > This fork focuses on Logitech G502-series support, especially G502 HERO
 > (`046D:C08B`). It adds detection, a G502 visual layout, onboard F13–F16
 > button-unlock support for DPI/Profile buttons, Chinese UI text for the action
-> ring and status prompts, and a Windows GUI build that does not open a console
-> window on launch.
+> ring and status prompts, user settings backup/import/export, and a Windows GUI
+> build that does not open a console window on launch.
 
 ## G502-series fork notes
 
@@ -23,6 +23,9 @@
   the same UI as other mouse buttons.
 - Before changing onboard G502 memory, Mouser saves a backup under
   `%APPDATA%\Mouser\g502_backups`.
+- Shortcut mappings, profiles, the actions ring, and personal settings can be
+  exported from Settings → Settings backup, then imported on another computer or
+  after reinstalling.
 - Personal config, onboard backups, and logs are intentionally not committed to
   this public repository. Use the private migration backup package when moving
   to another computer.
@@ -64,7 +67,7 @@ Logitech models.
 > **No install required.** Just download, extract, and double-click.
 
 1. Open the [**latest release page**](https://github.com/meiyoutou/Mouser-G502/releases/latest).
-2. Download the Windows G502 build: `Mouser-G502-F13F16-cn-i18n-sync-*.zip`.
+2. Download the Windows G502 build: `Mouser-G502-3.7.14-config-backup-*.zip`.
 3. Extract it anywhere, for example Desktop or Documents.
 4. Run `Mouser.exe`.
 
@@ -95,6 +98,9 @@ That's it. The app opens, drops a tray / menu-bar icon, and starts remapping imm
   - `%APPDATA%\Mouser\config.json` (Windows)
   - `~/Library/Application Support/Mouser/config.json` (macOS)
   - `~/.config/Mouser/config.json` (Linux)
+- Use **Settings → Settings backup** to export/import shortcuts, profiles, the
+  actions ring, and personal settings. Mouser also keeps recent automatic
+  backups under the user settings folder.
 - Logs rotate automatically (5 × 5 MB) under `%APPDATA%\Mouser\logs`, `~/Library/Logs/Mouser`, or `$XDG_STATE_HOME/Mouser/logs`.
 
 ---
@@ -115,6 +121,7 @@ That's it. The app opens, drops a tray / menu-bar icon, and starts remapping imm
 - **Mouse-to-mouse remap** — bind any button to act as left, right, middle, back, or forward click.
 - **Per-application profiles** — Mouser auto-switches mappings when the foreground app changes (e.g. Chrome vs. VS Code).
 - **Custom keyboard shortcuts** — record any key combination (e.g. `Ctrl+Shift+P`) directly in the UI.
+- **Settings backup / migration** — export your shortcuts, profiles, actions ring, and personal settings before reinstalling or moving to another computer, then import them back in one click.
 - **40+ built-in actions** — navigation, browser, editing, media, scroll-mode, and DPI shortcuts that adapt per platform.
 
 ### Device control
@@ -149,6 +156,7 @@ That's it. The app opens, drops a tray / menu-bar icon, and starts remapping imm
 ### Privacy first
 
 - **Fully local** — config is a plain JSON file, all processing happens on your machine.
+- **Private by default** — release packages and the public repository do not include your config, logs, screenshots, or onboard-memory backups.
 - **System tray / menu bar** — runs quietly in the background.
 - **Zero telemetry, zero cloud, zero account required.**
 
@@ -338,7 +346,6 @@ For project layout, the architecture diagram, the HID++ gesture detector, the En
 - [ ] **Improved scroll inversion** — explore driver-level or interception-driver approaches
 - [ ] **Gesture swipe tuning** — improve swipe reliability and defaults across more devices
 - [ ] **Per-app profile auto-creation** — detect new apps and prompt to create a profile
-- [ ] **Export / import config** — share configurations between machines
 - [ ] **Tray icon badge** — show the active profile name in the tray tooltip
 - [ ] **Broader Wayland support** — extend app detection beyond X11 / KDE and validate across more distros
 - [ ] **Plugin system** — allow third-party action providers

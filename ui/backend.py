@@ -18,7 +18,9 @@ from PySide6.QtCore import QCoreApplication, QMetaObject, QObject, Property, QTi
 
 from core.accessibility import is_process_trusted
 from core.config import (
-    BUTTON_NAMES, load_config, save_config, get_active_mappings,
+    BUTTON_NAMES, CONFIG_DIR, CONFIG_FILE,
+    export_user_config, import_user_config,
+    load_config, save_config, get_active_mappings,
     PROFILE_BUTTON_NAMES, set_mapping, create_profile, delete_profile,
     get_icon_for_exe, HAPTIC_ELIGIBLE_ACTIONS, set_action_haptic,
     set_button_haptic,
@@ -270,6 +272,7 @@ class Backend(QObject):
     updateInstallChanged = Signal()
     superKeyHeldChanged = Signal()
     g502OnboardChanged = Signal()
+    userConfigImported = Signal(str)
 
     # Internal cross-thread signals
     _profileSwitchRequest = Signal(str)
@@ -1270,6 +1273,14 @@ class Backend(QObject):
     def screenshotDirectoryLabel(self):
         return self._configured_screenshot_directory()
 
+    @Property(str, constant=True)
+    def configDirectory(self):
+        return CONFIG_DIR
+
+    @Property(str, constant=True)
+    def configFilePath(self):
+        return CONFIG_FILE
+
     @Property(bool, notify=settingsChanged)
     def hasCustomScreenshotDirectory(self):
         return self.has_custom_screenshot_directory()
@@ -2023,6 +2034,116 @@ class Backend(QObject):
         save_config(self._cfg)
         self.settingsChanged.emit()
         self._emit_status_key("status.saved", "Saved")
+
+    def _sync_after_user_config_import(self, cfg):
+        self._cfg = cfg
+        self._update_state = UpdateCheckState.from_dict(
+            self._cfg.get("settings", {}).get("update_check_state", {})
+        )
+        self._debug_events_enabled = bool(
+            self._cfg.get("settings", {}).get("debug_mode", False)
+        )
+        if self._engine:
+            self._engine.cfg = self._cfg
+            if hasattr(self._engine, "reload_mappings"):
+                self._engine.reload_mappings()
+                self._cfg = getattr(self._engine, "cfg", self._cfg)
+            if hasattr(self._engine, "set_debug_enabled"):
+                self._engine.set_debug_enabled(self.debugMode)
+            if hasattr(self._engine, "set_debug_events_enabled"):
+                self._engine.set_debug_events_enabled(self._debug_events_enabled)
+        self._sync_connected_device_info()
+        self._configureUpdateChecks()
+        self.settingsChanged.emit()
+        self.hapticChanged.emit()
+        self.forceSensingChanged.emit()
+        self.debugEventsEnabledChanged.emit()
+        self.g502OnboardChanged.emit()
+        self.activeProfileChanged.emit()
+        self.profilesChanged.emit()
+        self.mappingsChanged.emit()
+        self.userConfigImported.emit(self._language())
+
+    @Slot()
+    def exportUserConfig(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        desktop = Path.home() / "Desktop"
+        base_dir = desktop if desktop.is_dir() else Path.home()
+        default_name = f"Mouser-settings-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+        selected, _ = QFileDialog.getSaveFileName(
+            None,
+            self._tr("dialog.export_config", "Export Mouser Settings"),
+            str(base_dir / default_name),
+            self._tr(
+                "dialog.config_backup_filter",
+                "Mouser settings backup (*.zip);;JSON config (*.json)",
+            ),
+        )
+        if not selected:
+            return
+        try:
+            path = export_user_config(selected)
+        except Exception as exc:
+            self._emit_status_key(
+                "status.config_export_failed",
+                "Could not export settings: {error}",
+                error=str(exc),
+            )
+            return
+        self._emit_status_key(
+            "status.config_exported",
+            "Settings exported: {path}",
+            path=path,
+        )
+
+    @Slot()
+    def importUserConfig(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        selected, _ = QFileDialog.getOpenFileName(
+            None,
+            self._tr("dialog.import_config", "Import Mouser Settings"),
+            str(Path.home()),
+            self._tr(
+                "dialog.config_restore_filter",
+                "Mouser settings backup (*.zip *.json)",
+            ),
+        )
+        if not selected:
+            return
+        try:
+            cfg = import_user_config(selected)
+        except Exception as exc:
+            self._emit_status_key(
+                "status.config_import_failed",
+                "Could not import settings: {error}",
+                error=str(exc),
+            )
+            return
+        self._sync_after_user_config_import(cfg)
+        self._emit_status_key(
+            "status.config_imported",
+            "Settings imported. Your shortcuts have been restored.",
+        )
+
+    @Slot()
+    def openConfigFolder(self):
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+        except OSError as exc:
+            self._emit_status_key(
+                "status.config_folder_missing",
+                "Could not open settings folder: {error}",
+                error=str(exc),
+            )
+            return
+        folder_url = QUrl.fromLocalFile(os.path.abspath(CONFIG_DIR)).toString()
+        if not _open_url(folder_url):
+            self._emit_status_key(
+                "status.config_folder_missing",
+                "Could not open settings folder",
+            )
 
     @Slot()
     def manualCheckForUpdates(self):

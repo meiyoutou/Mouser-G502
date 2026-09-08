@@ -4,6 +4,7 @@ import os
 import plistlib
 import tempfile
 import unittest
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -583,6 +584,22 @@ class DefaultActionValidityTests(unittest.TestCase):
 
 
 class SaveConfigTests(unittest.TestCase):
+    def _patch_config_paths(self, temp_dir):
+        config_file = Path(temp_dir) / "config.json"
+        return (
+            patch.object(config, "CONFIG_DIR", temp_dir),
+            patch.object(config, "CONFIG_FILE", str(config_file)),
+            patch.object(config, "_LAST_AUTO_BACKUP_AT", 0.0),
+        )
+
+    def _symlink_or_skip(self, link_path, target_path):
+        try:
+            link_path.symlink_to(target_path)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                self.skipTest("Windows symlink privilege is not enabled")
+            raise
+
     def test_save_config_writes_atomically_to_regular_file(self):
         cfg = {"version": 9, "settings": {}, "profiles": {}}
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -613,7 +630,7 @@ class SaveConfigTests(unittest.TestCase):
             real_target.write_text("{}", encoding="utf-8")
 
             symlink_path = config_dir / "config.json"
-            symlink_path.symlink_to(real_target)
+            self._symlink_or_skip(symlink_path, real_target)
 
             with (
                 patch.object(config, "CONFIG_DIR", str(config_dir)),
@@ -643,7 +660,7 @@ class SaveConfigTests(unittest.TestCase):
             real_dir.mkdir()
             real_target = real_dir / "config.json"  # does NOT exist yet
             symlink_path = config_dir / "config.json"
-            symlink_path.symlink_to(real_target)
+            self._symlink_or_skip(symlink_path, real_target)
 
             with (
                 patch.object(config, "CONFIG_DIR", str(config_dir)),
@@ -656,6 +673,140 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(
                 json.loads(real_target.read_text(encoding="utf-8")), cfg
             )
+
+    def test_save_config_auto_backs_up_existing_config(self):
+        old_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        old_cfg["settings"]["language"] = "zh_CN"
+        new_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        new_cfg["settings"]["language"] = "en"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_file = Path(temp_dir) / "config.json"
+            config_file.write_text(json.dumps(old_cfg), encoding="utf-8")
+            with (
+                patch.object(config, "CONFIG_DIR", temp_dir),
+                patch.object(config, "CONFIG_FILE", str(config_file)),
+                patch.object(config, "CONFIG_AUTO_BACKUP_INTERVAL_SECONDS", 0),
+                patch.object(config, "_LAST_AUTO_BACKUP_AT", 0.0),
+            ):
+                config.save_config(new_cfg)
+                backups = config.list_config_backups()
+
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(
+                json.loads(Path(backups[0]).read_text(encoding="utf-8")),
+                old_cfg,
+            )
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8")),
+                new_cfg,
+            )
+
+    def test_export_user_config_zip_contains_config_and_metadata(self):
+        cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        cfg["profiles"]["default"]["mappings"]["middle"] = "copy"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_file = Path(temp_dir) / "config.json"
+            config_file.write_text(json.dumps(cfg), encoding="utf-8")
+            export_path = Path(temp_dir) / "mouser-settings.zip"
+            with (
+                patch.object(config, "CONFIG_DIR", temp_dir),
+                patch.object(config, "CONFIG_FILE", str(config_file)),
+            ):
+                returned = config.export_user_config(str(export_path))
+
+            self.assertEqual(returned, str(export_path))
+            with zipfile.ZipFile(export_path, "r") as zf:
+                self.assertIn("config.json", zf.namelist())
+                self.assertIn("metadata.json", zf.namelist())
+                exported = json.loads(zf.read("config.json").decode("utf-8"))
+                metadata = json.loads(zf.read("metadata.json").decode("utf-8"))
+            self.assertEqual(
+                exported["profiles"]["default"]["mappings"]["middle"],
+                "copy",
+            )
+            self.assertEqual(metadata["format"], config.CONFIG_EXPORT_FORMAT)
+
+    def test_import_user_config_zip_backs_up_and_replaces_current(self):
+        old_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        old_cfg["profiles"]["default"]["mappings"]["middle"] = "none"
+        imported_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        imported_cfg["profiles"]["default"]["mappings"]["middle"] = "paste"
+        imported_cfg["settings"]["language"] = "zh_CN"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_file = Path(temp_dir) / "config.json"
+            config_file.write_text(json.dumps(old_cfg), encoding="utf-8")
+            source_path = Path(temp_dir) / "source.zip"
+            with zipfile.ZipFile(source_path, "w") as zf:
+                zf.writestr("config.json", json.dumps(imported_cfg))
+            with (
+                patch.object(config, "CONFIG_DIR", temp_dir),
+                patch.object(config, "CONFIG_FILE", str(config_file)),
+            ):
+                loaded = config.import_user_config(str(source_path))
+                backups = config.list_config_backups()
+
+            self.assertEqual(
+                loaded["profiles"]["default"]["mappings"]["middle"],
+                "paste",
+            )
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8"))
+                ["profiles"]["default"]["mappings"]["middle"],
+                "paste",
+            )
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(
+                json.loads(Path(backups[0]).read_text(encoding="utf-8")),
+                old_cfg,
+            )
+
+    def test_load_config_recovers_latest_valid_backup_when_current_is_broken(self):
+        recovered_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
+        recovered_cfg["settings"]["language"] = "zh_CN"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_file = Path(temp_dir) / "config.json"
+            config_file.write_text("{not json", encoding="utf-8")
+            backup_dir = Path(temp_dir) / config.CONFIG_BACKUP_DIRNAME
+            backup_dir.mkdir()
+            (backup_dir / "config_20200101-000000_auto_save.json").write_text(
+                json.dumps(config.DEFAULT_CONFIG),
+                encoding="utf-8",
+            )
+            (backup_dir / "config_20200102-000000_auto_save.json").write_text(
+                json.dumps(recovered_cfg),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(config, "CONFIG_DIR", temp_dir),
+                patch.object(config, "CONFIG_FILE", str(config_file)),
+            ):
+                loaded = config.load_config()
+
+            self.assertEqual(loaded["settings"]["language"], "zh_CN")
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8"))
+                ["settings"]["language"],
+                "zh_CN",
+            )
+            self.assertTrue(any(p.name.startswith("config_broken_") for p in backup_dir.iterdir()))
+
+    def test_broken_config_copies_do_not_count_as_restore_backups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backup_dir = Path(temp_dir) / config.CONFIG_BACKUP_DIRNAME
+            backup_dir.mkdir()
+            (backup_dir / "config_20200101-000000_auto_save.json").write_text(
+                json.dumps(config.DEFAULT_CONFIG),
+                encoding="utf-8",
+            )
+            (backup_dir / "config_broken_20200102-000000.json").write_text(
+                "{not json",
+                encoding="utf-8",
+            )
+            with patch.object(config, "CONFIG_DIR", temp_dir):
+                backups = config.list_config_backups()
+
+            self.assertEqual(len(backups), 1)
+            self.assertTrue(Path(backups[0]).name.startswith("config_20200101-000000"))
 
 
 class AppCatalogTests(unittest.TestCase):
@@ -964,7 +1115,7 @@ class AppCatalogTests(unittest.TestCase):
                         "Type=Application",
                         "Name=Visual Studio Code",
                         "StartupWMClass=code-oss",
-                        f"Exec=env BAMF_DESKTOP_FILE_HINT=/usr/share/applications/code.desktop {exec_path} --new-window %F",
+                        f"Exec=env BAMF_DESKTOP_FILE_HINT=/usr/share/applications/code.desktop {str(exec_path).replace(os.sep, '/')} --new-window %F",
                     ]
                 ),
                 encoding="utf-8",
@@ -988,7 +1139,12 @@ class AppCatalogTests(unittest.TestCase):
             linked_exec = Path(temp_dir) / "code"
             real_exec.write_text("#!/bin/sh\n", encoding="utf-8")
             real_exec.chmod(0o755)
-            linked_exec.symlink_to(real_exec)
+            try:
+                linked_exec.symlink_to(real_exec)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    self.skipTest("Windows symlink privilege is not enabled")
+                raise
 
             with patch.object(app_catalog.sys, "platform", "linux"):
                 resolved = app_catalog.resolve_app_spec(str(linked_exec))

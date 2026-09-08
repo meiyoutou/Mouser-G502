@@ -164,6 +164,30 @@ class LocaleManagerTranslationTests(unittest.TestCase):
                 for key in required:
                     self.assertTrue(strings[key].strip())
 
+    def test_config_backup_strings_exist_in_all_locales(self):
+        required = {
+            "scroll.config_backup",
+            "scroll.config_backup_desc",
+            "scroll.config_export",
+            "scroll.config_import",
+            "scroll.config_open_folder",
+            "status.config_exported",
+            "status.config_imported",
+            "status.config_export_failed",
+            "status.config_import_failed",
+            "status.config_folder_missing",
+            "dialog.export_config",
+            "dialog.import_config",
+            "dialog.config_backup_filter",
+            "dialog.config_restore_filter",
+        }
+
+        for locale, strings in _TRANSLATIONS.items():
+            with self.subTest(locale=locale):
+                self.assertTrue(required.issubset(strings))
+                for key in required:
+                    self.assertTrue(strings[key].strip())
+
     def test_actions_ring_scope_and_status_toasts_exist_in_all_locales(self):
         required = {
             "ring.scope_title",

@@ -1273,6 +1273,60 @@ _BATTERY_RUNTIME_TRANSLATION_PATCHES = {
 for _lang, _patch in _BATTERY_RUNTIME_TRANSLATION_PATCHES.items():
     _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
 
+_CONFIG_BACKUP_TRANSLATION_PATCHES = {
+    "en": {
+        "scroll.config_backup": "Settings backup",
+        "scroll.config_backup_desc": "Export or import your shortcuts, profiles, actions ring, and personal settings. Automatic backups are also kept in your user settings folder.",
+        "scroll.config_export": "Export settings",
+        "scroll.config_import": "Import settings",
+        "scroll.config_open_folder": "Open settings folder",
+        "status.config_exported": "Settings exported: {path}",
+        "status.config_imported": "Settings imported. Your shortcuts have been restored.",
+        "status.config_export_failed": "Could not export settings: {error}",
+        "status.config_import_failed": "Could not import settings: {error}",
+        "status.config_folder_missing": "Could not open settings folder",
+        "dialog.export_config": "Export Mouser Settings",
+        "dialog.import_config": "Import Mouser Settings",
+        "dialog.config_backup_filter": "Mouser settings backup (*.zip);;JSON config (*.json)",
+        "dialog.config_restore_filter": "Mouser settings backup (*.zip *.json)",
+    },
+    "zh_CN": {
+        "scroll.config_backup": "\u914d\u7f6e\u5907\u4efd",
+        "scroll.config_backup_desc": "\u5bfc\u51fa\u6216\u5bfc\u5165\u4f60\u7684\u5feb\u6377\u952e\u3001\u914d\u7f6e\u6587\u4ef6\u3001\u52a8\u4f5c\u73af\u548c\u4e2a\u4eba\u8bbe\u7f6e\u3002Mouser \u4e5f\u4f1a\u5728\u7528\u6237\u8bbe\u7f6e\u6587\u4ef6\u5939\u91cc\u4fdd\u7559\u81ea\u52a8\u5907\u4efd\u3002",
+        "scroll.config_export": "\u5bfc\u51fa\u914d\u7f6e",
+        "scroll.config_import": "\u5bfc\u5165\u914d\u7f6e",
+        "scroll.config_open_folder": "\u6253\u5f00\u914d\u7f6e\u6587\u4ef6\u5939",
+        "status.config_exported": "\u914d\u7f6e\u5df2\u5bfc\u51fa\uff1a{path}",
+        "status.config_imported": "\u914d\u7f6e\u5df2\u5bfc\u5165\uff0c\u5feb\u6377\u952e\u5df2\u6062\u590d",
+        "status.config_export_failed": "\u914d\u7f6e\u5bfc\u51fa\u5931\u8d25\uff1a{error}",
+        "status.config_import_failed": "\u914d\u7f6e\u5bfc\u5165\u5931\u8d25\uff1a{error}",
+        "status.config_folder_missing": "\u65e0\u6cd5\u6253\u5f00\u914d\u7f6e\u6587\u4ef6\u5939",
+        "dialog.export_config": "\u5bfc\u51fa Mouser \u914d\u7f6e",
+        "dialog.import_config": "\u5bfc\u5165 Mouser \u914d\u7f6e",
+        "dialog.config_backup_filter": "Mouser \u914d\u7f6e\u5907\u4efd (*.zip);;JSON \u914d\u7f6e (*.json)",
+        "dialog.config_restore_filter": "Mouser \u914d\u7f6e\u5907\u4efd (*.zip *.json)",
+    },
+    "zh_TW": {
+        "scroll.config_backup": "\u8a2d\u5b9a\u5099\u4efd",
+        "scroll.config_backup_desc": "\u532f\u51fa\u6216\u532f\u5165\u4f60\u7684\u5feb\u901f\u9375\u3001\u8a2d\u5b9a\u6a94\u3001\u52d5\u4f5c\u74b0\u548c\u500b\u4eba\u8a2d\u5b9a\u3002Mouser \u4e5f\u6703\u5728\u4f7f\u7528\u8005\u8a2d\u5b9a\u8cc7\u6599\u593e\u88e1\u4fdd\u7559\u81ea\u52d5\u5099\u4efd\u3002",
+        "scroll.config_export": "\u532f\u51fa\u8a2d\u5b9a",
+        "scroll.config_import": "\u532f\u5165\u8a2d\u5b9a",
+        "scroll.config_open_folder": "\u958b\u555f\u8a2d\u5b9a\u8cc7\u6599\u593e",
+        "status.config_exported": "\u8a2d\u5b9a\u5df2\u532f\u51fa\uff1a{path}",
+        "status.config_imported": "\u8a2d\u5b9a\u5df2\u532f\u5165\uff0c\u5feb\u901f\u9375\u5df2\u9084\u539f",
+        "status.config_export_failed": "\u8a2d\u5b9a\u532f\u51fa\u5931\u6557\uff1a{error}",
+        "status.config_import_failed": "\u8a2d\u5b9a\u532f\u5165\u5931\u6557\uff1a{error}",
+        "status.config_folder_missing": "\u7121\u6cd5\u958b\u555f\u8a2d\u5b9a\u8cc7\u6599\u593e",
+        "dialog.export_config": "\u532f\u51fa Mouser \u8a2d\u5b9a",
+        "dialog.import_config": "\u532f\u5165 Mouser \u8a2d\u5b9a",
+        "dialog.config_backup_filter": "Mouser \u8a2d\u5b9a\u5099\u4efd (*.zip);;JSON \u8a2d\u5b9a (*.json)",
+        "dialog.config_restore_filter": "Mouser \u8a2d\u5b9a\u5099\u4efd (*.zip *.json)",
+    },
+}
+
+for _lang, _patch in _CONFIG_BACKUP_TRANSLATION_PATCHES.items():
+    _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
+
 for _lang, _patch in _TRANSLATION_PATCHES.items():
     _TRANSLATIONS.setdefault(_lang, {}).update(_patch)
 

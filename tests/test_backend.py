@@ -61,6 +61,8 @@ class _FakeEngine:
         self.start_count = 0
         self.stop_count = 0
         self.start_error = None
+        self.cfg = copy.deepcopy(DEFAULT_CONFIG)
+        self.reload_mappings_count = 0
 
     def set_profile_change_callback(self, cb):
         self.profile_callback = cb
@@ -108,6 +110,9 @@ class _FakeEngine:
 
     def stop(self):
         self.stop_count += 1
+
+    def reload_mappings(self):
+        self.reload_mappings_count += 1
 
 
 @unittest.skipIf(Backend is None, "PySide6 not installed in test environment")
@@ -175,6 +180,66 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertIn(r"G502 板载备份：C:\backup.json", backend.debugLog)
         self.assertIn("G502 板载解锁：DPI 降低 → F14", backend.debugLog)
         self.assertIn("G502 板载操作失败：未找到 G502 板载备份文件", backend.debugLog)
+
+    def test_export_user_config_slot_uses_file_dialog_and_reports_success(self):
+        backend = self._make_backend()
+        statuses = []
+        backend.statusMessage.connect(statuses.append)
+
+        with (
+            patch(
+                "PySide6.QtWidgets.QFileDialog.getSaveFileName",
+                return_value=("C:/tmp/Mouser-settings.zip", ""),
+            ),
+            patch(
+                "ui.backend.export_user_config",
+                return_value="C:/tmp/Mouser-settings.zip",
+            ) as export_mock,
+        ):
+            backend.exportUserConfig()
+
+        export_mock.assert_called_once_with("C:/tmp/Mouser-settings.zip")
+        self.assertTrue(statuses)
+        self.assertIn("C:/tmp/Mouser-settings.zip", statuses[-1])
+
+    def test_import_user_config_slot_refreshes_config_engine_and_signals(self):
+        engine = _FakeEngine()
+        backend = self._make_backend(engine=engine)
+        imported = copy.deepcopy(DEFAULT_CONFIG)
+        imported["settings"]["language"] = "zh_CN"
+        imported["profiles"]["default"]["mappings"]["middle"] = "paste"
+        statuses = []
+        imported_languages = []
+        settings_changes = []
+        mappings_changes = []
+        profiles_changes = []
+        active_profile_changes = []
+        backend.statusMessage.connect(statuses.append)
+        backend.userConfigImported.connect(imported_languages.append)
+        backend.settingsChanged.connect(lambda: settings_changes.append(True))
+        backend.mappingsChanged.connect(lambda: mappings_changes.append(True))
+        backend.profilesChanged.connect(lambda: profiles_changes.append(True))
+        backend.activeProfileChanged.connect(lambda: active_profile_changes.append(True))
+
+        with (
+            patch(
+                "PySide6.QtWidgets.QFileDialog.getOpenFileName",
+                return_value=("C:/tmp/Mouser-settings.zip", ""),
+            ),
+            patch("ui.backend.import_user_config", return_value=imported) as import_mock,
+        ):
+            backend.importUserConfig()
+
+        import_mock.assert_called_once_with("C:/tmp/Mouser-settings.zip")
+        self.assertEqual(backend._cfg["settings"]["language"], "zh_CN")
+        self.assertEqual(engine.cfg["settings"]["language"], "zh_CN")
+        self.assertEqual(engine.reload_mappings_count, 1)
+        self.assertEqual(imported_languages, ["zh_CN"])
+        self.assertTrue(settings_changes)
+        self.assertTrue(mappings_changes)
+        self.assertTrue(profiles_changes)
+        self.assertTrue(active_profile_changes)
+        self.assertEqual(statuses[-1], translate_string("zh_CN", "status.config_imported"))
 
     def test_device_image_source_uses_encoded_file_url(self):
         backend = self._make_backend(root_dir="/tmp/Mouser Build")
