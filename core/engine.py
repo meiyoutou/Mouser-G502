@@ -33,10 +33,14 @@ from core.actions_ring import ActionsRingController
 HSCROLL_ACTION_COOLDOWN_S = 0.35
 HSCROLL_VOLUME_COOLDOWN_S = 0.06
 _VOLUME_ACTIONS = {"volume_up", "volume_down"}
-BACKGROUND_BATTERY_POLL_INTERVAL_S = 1800
+BACKGROUND_BATTERY_POLL_INTERVAL_S = 300
+BACKGROUND_BATTERY_POLL_BLUETOOTH_INTERVAL_S = 900
 BACKGROUND_SMART_SHIFT_POLL_INTERVAL_S = 300
 BACKGROUND_HID_POLL_IDLE_GRACE_S = 60.0
 BACKGROUND_HID_POLL_EVENT_FUZZ_S = 2.0
+RUNTIME_WATCHDOG_INTERVAL_S = 30.0
+BATTERY_HEALTH_FAILURE_RECONNECT_THRESHOLD = 3
+BATTERY_JUMP_CONFIRM_DELTA = 35
 
 
 def _system_idle_seconds():
@@ -108,7 +112,13 @@ class Engine:
         )
         self._battery_poll_stop = threading.Event()
         self._battery_poll_thread = None          # track the poller thread
+        self._runtime_watchdog_stop = threading.Event()
+        self._runtime_watchdog_thread = None
         self._last_background_hid_poll_at = None
+        self._battery_refresh_lock = threading.Lock()
+        self._battery_read_failures = 0
+        self._last_battery_result = None
+        self._pending_battery_confirmation = None
         self._frontend_visible = False
         self._last_connection_state = bool(self._hid_runtime_state().input_ready)
         self._wheel_divert_change_cb = None
@@ -1320,6 +1330,10 @@ class Engine:
         hid_features_changed = hid_features_ready != self._last_hid_features_ready
         if connection_changed:
             self._last_connection_state = connected
+            self._battery_read_failures = 0
+            self._pending_battery_confirmation = None
+            if not connected:
+                self._last_battery_result = None
             if connected:
                 # Re-wire hooks now that the device (and its
                 # gesture_via_sense_panel / supported_buttons) is known, so the
@@ -1361,9 +1375,11 @@ class Engine:
         if hid_features_ready and hid_features_changed:
             self._request_saved_settings_replay()
 
-    def _background_hid_poll_allowed(self, now):
-        if not self._frontend_visible:
+    def _background_hid_poll_allowed(self, now, *, allow_hidden=False):
+        if not self._frontend_visible and not allow_hidden:
             return False
+        if allow_hidden:
+            return True
         idle_seconds = _system_idle_seconds()
         if idle_seconds is None:
             return True
@@ -1386,13 +1402,165 @@ class Engine:
         self._last_background_hid_poll_at = now
 
     def set_frontend_visible(self, visible):
-        self._frontend_visible = bool(visible)
+        visible = bool(visible)
+        was_visible = self._frontend_visible
+        self._frontend_visible = visible
+        if visible and not was_visible and self.hid_features_ready:
+            self.refresh_battery(manual=False)
+
+    @staticmethod
+    def _battery_poll_interval_for_device(device):
+        tokens = (
+            str(getattr(device, "transport", "") or "").lower(),
+            str(getattr(device, "source", "") or "").lower(),
+        )
+        if any(token in {"bt", "ble", "bluetooth"} or "bluetooth" in token
+               for token in tokens):
+            return BACKGROUND_BATTERY_POLL_BLUETOOTH_INTERVAL_S
+        return BACKGROUND_BATTERY_POLL_INTERVAL_S
+
+    @staticmethod
+    def _normalise_battery_result(result):
+        if result is None:
+            return None
+        try:
+            level, charging = result
+            level = max(0, min(100, int(level)))
+            return level, bool(charging)
+        except Exception:
+            return None
+
+    def _battery_result_is_confirmed(self, level, charging):
+        previous = self._last_battery_result
+        if previous is None:
+            self._pending_battery_confirmation = None
+            return True
+        previous_level, previous_charging = previous
+        if charging or previous_charging:
+            self._pending_battery_confirmation = None
+            return True
+        if abs(level - previous_level) < BATTERY_JUMP_CONFIRM_DELTA:
+            self._pending_battery_confirmation = None
+            return True
+        pending = self._pending_battery_confirmation
+        current = (level, charging)
+        if pending == current:
+            self._pending_battery_confirmation = None
+            return True
+        self._pending_battery_confirmation = current
+        print(
+            "[Engine] Ignoring one-off battery jump "
+            f"{previous_level}% -> {level}% until confirmed"
+        )
+        return False
+
+    def _request_hid_reconnect_for_health(self, reason):
+        reconnect = getattr(self.hook, "request_hid_reconnect", None)
+        if not callable(reconnect):
+            return False
+        self._emit_status("Mouse listener is restarting")
+        try:
+            return bool(reconnect(reason))
+        except Exception as exc:
+            print(f"[Engine] HID reconnect request failed: {exc}")
+            return False
+
+    def _handle_battery_read_failure(self, *, manual=False):
+        self._battery_read_failures += 1
+        if manual:
+            self._emit_status("Battery refresh failed")
+        if self._battery_read_failures >= BATTERY_HEALTH_FAILURE_RECONNECT_THRESHOLD:
+            self._battery_read_failures = 0
+            self._request_hid_reconnect_for_health("battery_health")
+
+    def _handle_battery_read_success(self, result, *, manual=False):
+        normalised = self._normalise_battery_result(result)
+        if normalised is None:
+            self._handle_battery_read_failure(manual=manual)
+            return False
+        level, charging = normalised
+        self._battery_read_failures = 0
+        if not self._battery_result_is_confirmed(level, charging):
+            if manual:
+                self._emit_status("Battery refresh failed")
+            return False
+        self._last_battery_result = (level, charging)
+        if self._battery_read_cb:
+            try:
+                self._battery_read_cb(level, charging)
+            except Exception:
+                pass
+        if manual:
+            self._emit_status("Battery refreshed")
+        return True
+
+    def _read_battery_once(self, *, manual=False, stop_event=None):
+        listener_lock = getattr(self.hook, "_hid_listener_lock", None)
+        if listener_lock is not None:
+            with listener_lock:
+                hg = getattr(self.hook, "_hid_gesture", None)
+        else:
+            hg = getattr(self.hook, "_hid_gesture", None)
+        if hg is None or getattr(hg, "connected_device", None) is None:
+            self._handle_battery_read_failure(manual=manual)
+            return False
+        if manual:
+            self._emit_status("Refreshing battery...")
+        try:
+            result = hg.read_battery()
+        except Exception as exc:
+            print(f"[Engine] Battery read failed: {exc}")
+            result = None
+        if stop_event is not None and stop_event.is_set():
+            return False
+        return self._handle_battery_read_success(result, manual=manual)
+
+    def refresh_battery(self, manual=False):
+        """Refresh battery asynchronously without clearing the previous value."""
+        if not self._battery_refresh_lock.acquire(blocking=False):
+            return True
+
+        def _worker():
+            try:
+                self._read_battery_once(manual=manual)
+            finally:
+                self._battery_refresh_lock.release()
+
+        threading.Thread(
+            target=_worker,
+            daemon=True,
+            name="BatteryRefresh",
+        ).start()
+        return True
+
+    def reconnect_mouse(self, reason="manual"):
+        """Best-effort manual/runtime HID reconnect without changing mappings."""
+        self._emit_status("Mouse listener is reconnecting...")
+        reconnect = getattr(self.hook, "request_hid_reconnect", None)
+        ok = False
+        if callable(reconnect):
+            try:
+                ok = bool(reconnect(reason))
+            except Exception as exc:
+                print(f"[Engine] Mouse reconnect failed: {exc}")
+        else:
+            try:
+                self.hook.stop()
+                ok = bool(self.hook.start())
+            except Exception as exc:
+                print(f"[Engine] Mouse reconnect failed: {exc}")
+                ok = False
+        if ok:
+            self._emit_status("Mouse reconnect requested")
+            self.refresh_battery(manual=False)
+        else:
+            self._emit_status("Mouse reconnect failed")
+        return ok
 
     def _battery_poll_loop(self, stop_event):
         """Read battery and smart shift mode periodically until disconnected."""
-        _battery_poll_interval = BACKGROUND_BATTERY_POLL_INTERVAL_S
         _ss_poll_interval = BACKGROUND_SMART_SHIFT_POLL_INTERVAL_S
-        _last_battery = time.time() - _battery_poll_interval  # fire immediately
+        _last_battery = None
         _last_ss = time.time() - _ss_poll_interval            # fire immediately
         _last_ss_mode = None
 
@@ -1400,21 +1568,18 @@ class Engine:
             now = time.time()
             hg = self.hook._hid_gesture
             if hg and hg.connected_device is not None:
+                _battery_poll_interval = self._battery_poll_interval_for_device(
+                    hg.connected_device
+                )
+                if _last_battery is None:
+                    _last_battery = now - _battery_poll_interval
                 if (
                     now - _last_battery >= _battery_poll_interval
-                    and self._background_hid_poll_allowed(now)
+                    and self._background_hid_poll_allowed(now, allow_hidden=True)
                 ):
                     _last_battery = now
                     self._record_background_hid_poll(now)
-                    result = hg.read_battery()
-                    if stop_event.is_set():
-                        return
-                    if result is not None and self._battery_read_cb:
-                        level, charging = result
-                        try:
-                            self._battery_read_cb(level, charging)
-                        except Exception:
-                            pass
+                    self._read_battery_once(stop_event=stop_event)
 
                 if (
                     not self._replay_inflight
@@ -1673,9 +1838,62 @@ class Engine:
         if status_message:
             self._emit_status(status_message)
 
+    @staticmethod
+    def _runtime_health_needs_recovery(health):
+        if not isinstance(health, dict):
+            return False
+        if not health.get("running", False):
+            return True
+        if not health.get("hook_thread_alive", True):
+            return True
+        if not health.get("dispatch_worker_alive", True):
+            return True
+        if health.get("hid_listener_present") and not health.get(
+            "hid_listener_alive", True
+        ):
+            return True
+        return False
+
+    def _runtime_watchdog_loop(self, stop_event):
+        while not stop_event.wait(RUNTIME_WATCHDOG_INTERVAL_S):
+            ensure = getattr(self.hook, "ensure_runtime_alive", None)
+            if not callable(ensure):
+                continue
+            runtime_health = getattr(self.hook, "runtime_health", None)
+            try:
+                before = runtime_health() if callable(runtime_health) else None
+                if self._runtime_health_needs_recovery(before):
+                    self._emit_status("Mouse listener is restarting")
+                after = ensure()
+                if (
+                    before is None
+                    and self._runtime_health_needs_recovery(after)
+                ):
+                    self._emit_status("Mouse listener is restarting")
+            except Exception as exc:
+                print(f"[Engine] Runtime watchdog failed: {exc}")
+
+    def _start_runtime_watchdog(self):
+        if not callable(getattr(self.hook, "ensure_runtime_alive", None)):
+            return
+        if (
+            self._runtime_watchdog_thread is not None
+            and self._runtime_watchdog_thread.is_alive()
+        ):
+            return
+        self._runtime_watchdog_stop = threading.Event()
+        self._runtime_watchdog_thread = threading.Thread(
+            target=self._runtime_watchdog_loop,
+            args=(self._runtime_watchdog_stop,),
+            daemon=True,
+            name="RuntimeWatchdog",
+        )
+        self._runtime_watchdog_thread.start()
+
     def start(self):
         self._emit_linux_permission_warning()
         self.hook.start()
+        self._start_runtime_watchdog()
         self._app_detector.start()
         # Temporary safety-net: keep the old delayed replay path until the
         # hid-ready transition path has proven out in the field.
@@ -1702,5 +1920,9 @@ class Engine:
         if self._battery_poll_thread is not None:
             self._battery_poll_thread.join(timeout=5)
             self._battery_poll_thread = None
+        self._runtime_watchdog_stop.set()
+        if self._runtime_watchdog_thread is not None:
+            self._runtime_watchdog_thread.join(timeout=5)
+            self._runtime_watchdog_thread = None
         self._app_detector.stop()
         self.hook.stop()

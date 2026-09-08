@@ -3,6 +3,7 @@ Shared mouse hook behavior used by platform implementations.
 """
 
 import queue
+import threading
 import time
 
 try:
@@ -97,6 +98,7 @@ class BaseMouseHook:
         )
         self._connected_device = None
         self._dispatch_queue = None
+        self._hid_listener_lock = threading.RLock()
 
     def _init_dispatch_queue(self, maxsize=0):
         """Initialize dispatch queue storage for subclasses with event threads."""
@@ -474,34 +476,79 @@ class BaseMouseHook:
         return extra
 
     def _start_hid_listener(self):
-        platform_module = getattr(self.__class__, "_platform_module", None)
-        listener_cls = getattr(platform_module, "HidGestureListener", HidGestureListener)
-        if listener_cls is None:
-            return None
-        listener = listener_cls(
-            on_down=self._on_hid_gesture_down,
-            on_up=self._on_hid_gesture_up,
-            on_move=self._on_hid_gesture_move,
-            on_connect=self._on_hid_connect,
-            on_disconnect=self._on_hid_disconnect,
-            extra_diverts=self._build_extra_diverts(),
-            on_thumb_button_down=self._on_hid_thumb_button_down,
-            on_thumb_button_up=self._on_hid_thumb_button_up,
-            on_thumb_button_move=self._on_hid_thumb_button_move,
-            on_battery=self._on_hid_battery,
-        )
-        self._hid_gesture = listener
-        if not listener.start():
-            self._hid_gesture = None
-        elif hasattr(listener, "set_thumb_rawxy_enabled"):
-            # Re-apply the last thumb-swipe config to the fresh listener.
-            listener.set_thumb_rawxy_enabled(self._thumb_direction_enabled)
-        return self._hid_gesture
+        with self._hid_listener_lock:
+            platform_module = getattr(self.__class__, "_platform_module", None)
+            listener_cls = getattr(platform_module, "HidGestureListener", HidGestureListener)
+            if listener_cls is None:
+                return None
+            existing = self._hid_gesture
+            if existing is not None and self.hid_listener_alive():
+                return existing
+            listener = listener_cls(
+                on_down=self._on_hid_gesture_down,
+                on_up=self._on_hid_gesture_up,
+                on_move=self._on_hid_gesture_move,
+                on_connect=self._on_hid_connect,
+                on_disconnect=self._on_hid_disconnect,
+                extra_diverts=self._build_extra_diverts(),
+                on_thumb_button_down=self._on_hid_thumb_button_down,
+                on_thumb_button_up=self._on_hid_thumb_button_up,
+                on_thumb_button_move=self._on_hid_thumb_button_move,
+                on_battery=self._on_hid_battery,
+            )
+            self._hid_gesture = listener
+            if not listener.start():
+                self._hid_gesture = None
+            elif hasattr(listener, "set_thumb_rawxy_enabled"):
+                # Re-apply the last thumb-swipe config to the fresh listener.
+                listener.set_thumb_rawxy_enabled(self._thumb_direction_enabled)
+            return self._hid_gesture
 
     def _stop_hid_listener(self):
-        if self._hid_gesture:
-            self._hid_gesture.stop()
-            self._hid_gesture = None
+        with self._hid_listener_lock:
+            if self._hid_gesture:
+                self._hid_gesture.stop()
+                self._hid_gesture = None
+
+    def hid_listener_alive(self):
+        """Return True when the HID++ listener thread is present and running."""
+        hg = getattr(self, "_hid_gesture", None)
+        if hg is None:
+            return False
+        is_alive = getattr(hg, "is_alive", None)
+        if callable(is_alive):
+            try:
+                return bool(is_alive())
+            except Exception:
+                return False
+        thread = getattr(hg, "_thread", None)
+        if thread is not None and hasattr(thread, "is_alive"):
+            try:
+                return bool(thread.is_alive())
+            except Exception:
+                return False
+        return bool(getattr(hg, "_running", False))
+
+    def request_hid_reconnect(self, reason="manual"):
+        """Ask the HID++ listener to reconnect, or start it if it is missing."""
+        with self._hid_listener_lock:
+            hg = getattr(self, "_hid_gesture", None)
+            if hg is None:
+                return self._start_hid_listener() is not None
+            force_reconnect = getattr(hg, "force_reconnect", None)
+            if callable(force_reconnect):
+                try:
+                    force_reconnect()
+                    self._emit_debug(f"HID reconnect requested: {reason}")
+                    return True
+                except Exception as exc:
+                    print(f"[MouseHook] HID reconnect request failed: {exc}")
+            try:
+                self._stop_hid_listener()
+                return self._start_hid_listener() is not None
+            except Exception as exc:
+                print(f"[MouseHook] HID listener restart failed: {exc}")
+                return False
 
     def _on_hid_connect(self):
         self._connected_device = (

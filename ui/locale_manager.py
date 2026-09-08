@@ -1219,6 +1219,60 @@ _TRANSLATION_PATCHES = {
     },
 }
 
+_BATTERY_RUNTIME_TRANSLATION_PATCHES = {
+    "en": {
+        "mouse.battery_refresh": "Refresh battery",
+        "mouse.battery_just_now": "just now",
+        "mouse.battery_minutes_ago": "{minutes} min ago",
+        "mouse.battery_last_prefix": "Last ",
+        "mouse.battery_unknown": "Unknown",
+        "mouse.reconnect_listener": "Reconnect mouse listener",
+        "mouse.connected_via_prefix": " via ",
+        "status.battery_refreshing": "Refreshing battery...",
+        "status.battery_refreshed": "Battery refreshed",
+        "status.battery_refresh_failed": "Battery refresh failed",
+        "status.mouse_reconnecting": "Reconnecting mouse...",
+        "status.mouse_reconnect_requested": "Mouse reconnect requested",
+        "status.mouse_reconnect_failed": "Mouse reconnect failed",
+        "status.mouse_listener_restarting": "Mouse listener is restarting",
+    },
+    "zh_CN": {
+        "mouse.battery_refresh": "\u5237\u65b0\u7535\u91cf",
+        "mouse.battery_just_now": "\u521a\u521a\u66f4\u65b0",
+        "mouse.battery_minutes_ago": "{minutes} \u5206\u949f\u524d",
+        "mouse.battery_last_prefix": "\u4e0a\u6b21 ",
+        "mouse.battery_unknown": "\u7535\u91cf\u672a\u77e5",
+        "mouse.reconnect_listener": "\u91cd\u65b0\u8fde\u63a5\u9f20\u6807\u76d1\u542c",
+        "mouse.connected_via_prefix": " \u00b7 ",
+        "status.battery_refreshing": "\u6b63\u5728\u5237\u65b0\u7535\u91cf...",
+        "status.battery_refreshed": "\u7535\u91cf\u5df2\u5237\u65b0",
+        "status.battery_refresh_failed": "\u7535\u91cf\u5237\u65b0\u5931\u8d25",
+        "status.mouse_reconnecting": "\u6b63\u5728\u91cd\u65b0\u8fde\u63a5\u9f20\u6807...",
+        "status.mouse_reconnect_requested": "\u5df2\u8bf7\u6c42\u91cd\u65b0\u8fde\u63a5\u9f20\u6807",
+        "status.mouse_reconnect_failed": "\u9f20\u6807\u91cd\u65b0\u8fde\u63a5\u5931\u8d25",
+        "status.mouse_listener_restarting": "\u9f20\u6807\u76d1\u542c\u6b63\u5728\u91cd\u542f",
+    },
+    "zh_TW": {
+        "mouse.battery_refresh": "\u91cd\u65b0\u6574\u7406\u96fb\u91cf",
+        "mouse.battery_just_now": "\u525b\u525b\u66f4\u65b0",
+        "mouse.battery_minutes_ago": "{minutes} \u5206\u9418\u524d",
+        "mouse.battery_last_prefix": "\u4e0a\u6b21 ",
+        "mouse.battery_unknown": "\u96fb\u91cf\u672a\u77e5",
+        "mouse.reconnect_listener": "\u91cd\u65b0\u9023\u63a5\u6ed1\u9f20\u76e3\u807d",
+        "mouse.connected_via_prefix": " \u00b7 ",
+        "status.battery_refreshing": "\u6b63\u5728\u91cd\u65b0\u6574\u7406\u96fb\u91cf...",
+        "status.battery_refreshed": "\u96fb\u91cf\u5df2\u91cd\u65b0\u6574\u7406",
+        "status.battery_refresh_failed": "\u96fb\u91cf\u91cd\u65b0\u6574\u7406\u5931\u6557",
+        "status.mouse_reconnecting": "\u6b63\u5728\u91cd\u65b0\u9023\u63a5\u6ed1\u9f20...",
+        "status.mouse_reconnect_requested": "\u5df2\u8981\u6c42\u91cd\u65b0\u9023\u63a5\u6ed1\u9f20",
+        "status.mouse_reconnect_failed": "\u6ed1\u9f20\u91cd\u65b0\u9023\u63a5\u5931\u6557",
+        "status.mouse_listener_restarting": "\u6ed1\u9f20\u76e3\u807d\u6b63\u5728\u91cd\u65b0\u555f\u52d5",
+    },
+}
+
+for _lang, _patch in _BATTERY_RUNTIME_TRANSLATION_PATCHES.items():
+    _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
+
 for _lang, _patch in _TRANSLATION_PATCHES.items():
     _TRANSLATIONS.setdefault(_lang, {}).update(_patch)
 

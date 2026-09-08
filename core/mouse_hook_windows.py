@@ -1225,6 +1225,7 @@ class MouseHook(BaseMouseHook):
         self._prev_raw_buttons.clear()
         self._prev_hid_reports.clear()
         self._reinstall_hook()
+        self.request_hid_reconnect("device_change")
 
     def _reinstall_hook(self):
         self._uninstall_keyboard_hook()
@@ -1249,8 +1250,59 @@ class MouseHook(BaseMouseHook):
         the dispatch-worker thread, not inline on the HID callback thread."""
         self._enqueue_dispatch_event(mouse_event)
 
+    def _start_dispatch_worker(self):
+        if self._dispatch_worker_thread and self._dispatch_worker_thread.is_alive():
+            return True
+        self._dispatch_worker_thread = threading.Thread(
+            target=self._dispatch_worker,
+            daemon=True,
+            name="HookDispatch",
+        )
+        self._dispatch_worker_thread.start()
+        return True
+
+    def runtime_health(self):
+        return {
+            "running": bool(self._running),
+            "hook_thread_alive": bool(
+                self._hook_thread and self._hook_thread.is_alive()
+            ),
+            "dispatch_worker_alive": bool(
+                self._dispatch_worker_thread
+                and self._dispatch_worker_thread.is_alive()
+            ),
+            "hid_listener_alive": bool(self.hid_listener_alive()),
+            "hid_listener_present": bool(getattr(self, "_hid_gesture", None)),
+        }
+
+    def ensure_runtime_alive(self):
+        """Best-effort self-healing for the Windows hook runtime."""
+        health = self.runtime_health()
+        if not self._running:
+            print("[MouseHook] Hook runtime stopped; restarting")
+            self.start()
+            return self.runtime_health()
+        if not health["hook_thread_alive"]:
+            print("[MouseHook] Hook thread stopped; restarting hook runtime")
+            self._running = False
+            self.start()
+            return self.runtime_health()
+        if not health["dispatch_worker_alive"]:
+            print("[MouseHook] Dispatch worker stopped; restarting")
+            self._start_dispatch_worker()
+        if (
+            not health["hid_listener_alive"]
+            and getattr(self, "_hid_gesture", None) is not None
+        ):
+            print("[MouseHook] HID listener stopped; restarting")
+            self.request_hid_reconnect("runtime_health")
+        return self.runtime_health()
+
     def start(self):
         if self._hook_thread and self._hook_thread.is_alive():
+            self._start_dispatch_worker()
+            if not self.hid_listener_alive():
+                self.request_hid_reconnect("start")
             return True
         self._startup_ok = False
         self._startup_event.clear()
@@ -1263,12 +1315,7 @@ class MouseHook(BaseMouseHook):
         if not self._startup_ok:
             return False
         self._start_hid_listener()
-        self._dispatch_worker_thread = threading.Thread(
-            target=self._dispatch_worker,
-            daemon=True,
-            name="HookDispatch",
-        )
-        self._dispatch_worker_thread.start()
+        self._start_dispatch_worker()
         return True
 
     def stop(self):

@@ -1114,6 +1114,7 @@ class HidGestureListener:
         self._reprog_absent_until = {}
         self._pending_battery = None
         self._battery_result = None
+        self._battery_call_lock = threading.Lock()
         self._battery_event = threading.Event()
         self._last_logged_battery = None
         self._last_battery_event = None
@@ -2079,6 +2080,11 @@ class HidGestureListener:
         """
         self._reconnect_requested = True
 
+    def is_alive(self):
+        """Return True while the listener worker thread is still running."""
+        thread = getattr(self, "_thread", None)
+        return bool(thread is not None and thread.is_alive())
+
     def read_smart_shift(self):
         """Queue a Smart Shift read.
         Returns dict {'mode': str, 'enabled': bool, 'threshold': int} or None."""
@@ -2601,14 +2607,15 @@ class HidGestureListener:
         Returns ``(level, charging)`` on success (level 0-100, charging bool)
         or ``None`` on failure/timeout.
         """
-        self._battery_result = None
-        self._battery_event.clear()
-        self._pending_battery = "read"
-        if not self._battery_event.wait(3.0):
-            print("[HidGesture] Battery read timed out")
-            self._pending_battery = None
-            return None
-        return self._battery_result
+        with self._battery_call_lock:
+            self._battery_result = None
+            self._battery_event.clear()
+            self._pending_battery = "read"
+            if not self._battery_event.wait(3.0):
+                print("[HidGesture] Battery read timed out")
+                self._pending_battery = None
+                return None
+            return self._battery_result
 
     @staticmethod
     def _parse_battery_params(params):

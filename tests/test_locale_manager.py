@@ -205,6 +205,29 @@ class LocaleManagerTranslationTests(unittest.TestCase):
                 for key in required:
                     self.assertTrue(strings[key].strip())
 
+    def test_battery_and_mouse_reconnect_strings_exist_in_all_locales(self):
+        required = {
+            "mouse.battery_refresh",
+            "mouse.battery_just_now",
+            "mouse.battery_minutes_ago",
+            "mouse.battery_last_prefix",
+            "mouse.battery_unknown",
+            "mouse.reconnect_listener",
+            "status.battery_refreshing",
+            "status.battery_refreshed",
+            "status.battery_refresh_failed",
+            "status.mouse_reconnecting",
+            "status.mouse_reconnect_requested",
+            "status.mouse_reconnect_failed",
+            "status.mouse_listener_restarting",
+        }
+
+        for locale, strings in _TRANSLATIONS.items():
+            with self.subTest(locale=locale):
+                self.assertTrue(required.issubset(strings))
+                for key in required:
+                    self.assertTrue(strings[key].strip())
+
     def test_actions_ring_overlay_short_labels_are_localized(self):
         from core.config import _default_actions_ring_slots
         from ui.actions_ring_overlay import RING_LABEL_TRANSLATIONS

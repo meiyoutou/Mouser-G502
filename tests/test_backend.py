@@ -54,6 +54,10 @@ class _FakeEngine:
         self.debug_events_enabled = None
         self.raw_hid_learning_requests = []
         self.raw_hid_learning_result = True
+        self.refresh_battery_requests = []
+        self.refresh_battery_result = True
+        self.reconnect_mouse_requests = []
+        self.reconnect_mouse_result = True
         self.start_count = 0
         self.stop_count = 0
         self.start_error = None
@@ -88,6 +92,14 @@ class _FakeEngine:
     def start_raw_hid_learning(self, duration_s=60):
         self.raw_hid_learning_requests.append(duration_s)
         return self.raw_hid_learning_result
+
+    def refresh_battery(self, manual=False):
+        self.refresh_battery_requests.append(bool(manual))
+        return self.refresh_battery_result
+
+    def reconnect_mouse(self, reason="manual"):
+        self.reconnect_mouse_requests.append(reason)
+        return self.reconnect_mouse_result
 
     def start(self):
         self.start_count += 1
@@ -860,6 +872,9 @@ class BackendDeviceLayoutTests(unittest.TestCase):
             self.assertEqual(backend.connectedDeviceKey, "mx_master_3")
             self.assertEqual(backend.effectiveDeviceLayoutKey, "mx_master_3")
             backend._battery_level = 42
+            backend._battery_charging = True
+            backend._battery_updated_at = 1000
+            backend._battery_stale = True
 
             backend._handleConnectionChange(False)
 
@@ -867,6 +882,9 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertEqual(backend.connectedDeviceKey, "")
         self.assertEqual(backend.effectiveDeviceLayoutKey, "generic_mouse")
         self.assertEqual(backend.batteryLevel, -1)
+        self.assertFalse(backend.batteryCharging)
+        self.assertFalse(backend.batteryStale)
+        self.assertEqual(backend.batteryLastUpdatedText, translate_string("en", "mouse.battery_unknown"))
 
     def test_refresh_updates_hid_features_without_reemitting_connection_edge(self):
         device = SimpleNamespace(
@@ -948,6 +966,88 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertIsNotNone(engine.status_callback)
         self.assertIs(engine.status_callback.__self__, backend)
         self.assertIs(engine.status_callback.__func__, Backend._onEngineStatusMessage)
+
+    def test_battery_summary_marks_fresh_and_stale_updates(self):
+        backend = self._make_backend()
+
+        with patch("ui.backend.time.time", return_value=1000):
+            backend._handleBatteryChange(85, False)
+
+        with patch("ui.backend.time.time", return_value=1005):
+            self.assertEqual(
+                backend.batteryLastUpdatedText,
+                translate_string("en", "mouse.battery_just_now"),
+            )
+            self.assertEqual(
+                backend.batterySummaryText,
+                "85% · " + translate_string("en", "mouse.battery_just_now"),
+            )
+
+        with patch("ui.backend.time.time", return_value=1180):
+            self.assertEqual(
+                backend.batteryLastUpdatedText,
+                translate_string("en", "mouse.battery_minutes_ago").format(minutes=3),
+            )
+            backend._emit_status_text("Battery refresh failed")
+            self.assertTrue(backend.batteryStale)
+            self.assertEqual(
+                backend.batterySummaryText,
+                (
+                    translate_string("en", "mouse.battery_last_prefix")
+                    + "85% · "
+                    + translate_string("en", "mouse.battery_minutes_ago").format(minutes=3)
+                ),
+            )
+
+    def test_refresh_battery_calls_engine_and_reports_progress(self):
+        engine = _FakeEngine()
+        backend = self._make_backend(engine=engine)
+        statuses = []
+        backend.statusMessage.connect(statuses.append)
+
+        backend.refreshBattery()
+
+        self.assertEqual(engine.refresh_battery_requests, [True])
+        self.assertEqual(
+            statuses,
+            [translate_string("en", "status.battery_refreshing")],
+        )
+
+    def test_refresh_battery_failure_keeps_previous_value_as_stale(self):
+        engine = _FakeEngine()
+        engine.refresh_battery_result = False
+        backend = self._make_backend(engine=engine)
+        with patch("ui.backend.time.time", return_value=1000):
+            backend._handleBatteryChange(70, False)
+        statuses = []
+        backend.statusMessage.connect(statuses.append)
+
+        backend.refreshBattery()
+
+        self.assertEqual(engine.refresh_battery_requests, [True])
+        self.assertEqual(backend.batteryLevel, 70)
+        self.assertTrue(backend.batteryStale)
+        self.assertEqual(
+            statuses,
+            [
+                translate_string("en", "status.battery_refreshing"),
+                translate_string("en", "status.battery_refresh_failed"),
+            ],
+        )
+
+    def test_reconnect_mouse_calls_engine(self):
+        engine = _FakeEngine()
+        backend = self._make_backend(engine=engine)
+        statuses = []
+        backend.statusMessage.connect(statuses.append)
+
+        backend.reconnectMouse()
+
+        self.assertEqual(engine.reconnect_mouse_requests, ["manual"])
+        self.assertEqual(
+            statuses,
+            [translate_string("en", "status.mouse_reconnecting")],
+        )
 
     def test_screenshot_directory_defaults_to_system_behavior(self):
         backend = self._make_backend()

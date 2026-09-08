@@ -917,16 +917,21 @@ Item {
 
                             // Battery badge
                             Rectangle {
+                                id: batteryBadge
                                 visible: backend.batteryLevel >= 0
                                 width: battRow.implicitWidth + 16
                                 height: 24; radius: 12
                                 anchors.verticalCenter: parent.verticalCenter
+                                opacity: backend.batteryStale ? 0.72 : 1.0
                                 color: {
                                     var lvl = backend.batteryLevel
                                     if (lvl <= 20) return Qt.rgba(0.88, 0.2, 0.2, 0.18)
                                     if (lvl <= 40) return Qt.rgba(0.9, 0.56, 0.1, 0.18)
                                     return Qt.rgba(0, 0.83, 0.67, uiState.darkMode ? 0.12 : 0.16)
                                 }
+                                ToolTip.visible: batteryMa.containsMouse
+                                ToolTip.delay: 350
+                                ToolTip.text: s["mouse.battery_refresh"] || "Refresh battery"
 
                                 Row {
                                     id: battRow
@@ -947,7 +952,7 @@ Item {
                                     }
 
                                     Text {
-                                        text: backend.batteryLevel + "%"
+                                        text: backend.batterySummaryText
                                         font { family: uiState.fontFamily; pixelSize: 11; bold: true }
                                         color: {
                                             var lvl = backend.batteryLevel
@@ -957,16 +962,29 @@ Item {
                                         }
                                     }
                                 }
+
+                                MouseArea {
+                                    id: batteryMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.refreshBattery()
+                                }
                             }
 
                             // Connection status badge
                             Rectangle {
+                                id: connectionBadge
                                 width: statusRow.implicitWidth + 16
                                 height: 24; radius: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: backend.mouseConnected
                                        ? Qt.rgba(0, 0.83, 0.67, 0.12)
                                        : Qt.rgba(0.9, 0.3, 0.3, 0.15)
+                                opacity: connectionMa.containsMouse ? 0.82 : 1.0
+                                ToolTip.visible: connectionMa.containsMouse
+                                ToolTip.delay: 350
+                                ToolTip.text: s["mouse.reconnect_listener"] || "Reconnect mouse listener"
 
                                 Row {
                                     id: statusRow
@@ -983,12 +1001,21 @@ Item {
                                         text: backend.mouseConnected
                                               ? (s["mouse.connected"]
                                                  + (backend.connectionType !== ""
-                                                    ? " · " + backend.connectionType : ""))
+                                                    ? ((s["mouse.connected_via_prefix"] || " via ")
+                                                       + backend.connectionType : ""))
                                               : s["mouse.not_connected"]
                                         font { family: uiState.fontFamily; pixelSize: 11 }
                                         color: backend.mouseConnected
                                                ? theme.accent : "#e05555"
                                     }
+                                }
+
+                                MouseArea {
+                                    id: connectionMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.reconnectMouse()
                                 }
                             }
 

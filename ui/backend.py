@@ -256,6 +256,7 @@ class Backend(QObject):
     hidFeaturesReadyChanged = Signal()
     batteryLevelChanged = Signal()
     batteryChargingChanged = Signal()
+    batteryUpdatedChanged = Signal()
     debugLogChanged = Signal()
     debugEventsEnabledChanged = Signal()
     gestureStateChanged = Signal()
@@ -303,6 +304,8 @@ class Backend(QObject):
         self._connected_device_transport = ""
         self._battery_level = -1
         self._battery_charging = False
+        self._battery_updated_at = None
+        self._battery_stale = False
         self._hid_features_ready = False
         self._debug_lines = []
         self._debug_events_enabled = bool(
@@ -341,6 +344,9 @@ class Backend(QObject):
         self._update_timer = QTimer(self)
         self._update_timer.setInterval(DEFAULT_AUTO_CHECK_INTERVAL_SECONDS * 1000)
         self._update_timer.timeout.connect(lambda: self._startUpdateCheck(manual=False))
+        self._battery_age_timer = QTimer(self)
+        self._battery_age_timer.setInterval(60 * 1000)
+        self._battery_age_timer.timeout.connect(self._emitBatteryAgeTick)
 
         # Lazily-computed list snapshots for QML bindings. Every read of a
         # ``@Property(list, ...)`` returns the cached value until the
@@ -480,6 +486,62 @@ class Backend(QObject):
 
     def _emit_status_key(self, key, default=None, **values):
         self.statusMessage.emit(self._tr(key, default, **values))
+
+    def _battery_updated_text(self):
+        if self._battery_updated_at is None:
+            return self._tr("mouse.battery_unknown", "Unknown")
+        elapsed_s = max(0, int(time.time() - float(self._battery_updated_at)))
+        minutes = elapsed_s // 60
+        if minutes <= 0:
+            return self._tr("mouse.battery_just_now", "just now")
+        return self._tr(
+            "mouse.battery_minutes_ago",
+            "{minutes} min ago",
+            minutes=minutes,
+        )
+
+    def _syncBatteryAgeTimer(self):
+        if (
+            self._battery_level >= 0
+            and self._battery_updated_at is not None
+        ):
+            if not self._battery_age_timer.isActive():
+                self._battery_age_timer.start()
+        elif self._battery_age_timer.isActive():
+            self._battery_age_timer.stop()
+
+    def _emitBatteryAgeTick(self):
+        if self._battery_level >= 0 and self._battery_updated_at is not None:
+            self.batteryUpdatedChanged.emit()
+        else:
+            self._syncBatteryAgeTimer()
+
+    def _set_battery_stale(self, stale):
+        stale = bool(stale and self._battery_level >= 0)
+        if stale == self._battery_stale:
+            return
+        self._battery_stale = stale
+        self.batteryUpdatedChanged.emit()
+
+    def _clear_battery_state(self):
+        level_changed = self._battery_level != -1
+        charging_changed = self._battery_charging
+        meta_changed = (
+            self._battery_updated_at is not None
+            or self._battery_stale
+        )
+        if not (level_changed or charging_changed or meta_changed):
+            return
+        self._battery_level = -1
+        self._battery_charging = False
+        self._battery_updated_at = None
+        self._battery_stale = False
+        self._syncBatteryAgeTimer()
+        if level_changed:
+            self.batteryLevelChanged.emit()
+        if charging_changed:
+            self.batteryChargingChanged.emit()
+        self.batteryUpdatedChanged.emit()
 
     def _tr_g502_onboard_error(self, message):
         text = str(message or "")
@@ -734,7 +796,18 @@ class Backend(QObject):
             "Start-at-login state is inconsistent; please restart Mouser to recover.": "status.start_login_inconsistent",
             "Start at login enabled": "status.start_login_enabled",
             "Start at login disabled": "status.start_login_disabled",
+            "Refreshing battery...": "status.battery_refreshing",
+            "Battery refreshed": "status.battery_refreshed",
+            "Battery refresh failed": "status.battery_refresh_failed",
+            "Mouse listener is reconnecting...": "status.mouse_reconnecting",
+            "Mouse reconnect requested": "status.mouse_reconnect_requested",
+            "Mouse reconnect failed": "status.mouse_reconnect_failed",
+            "Mouse listener is restarting": "status.mouse_listener_restarting",
         }
+        if text == "Battery refresh failed":
+            self._set_battery_stale(True)
+        elif text == "Battery refreshed":
+            self._set_battery_stale(False)
         key = exact.get(text)
         if key:
             self._emit_status_key(key, text)
@@ -1401,6 +1474,25 @@ class Backend(QObject):
     @Property(bool, notify=batteryChargingChanged)
     def batteryCharging(self):
         return self._battery_charging
+
+    @Property(str, notify=batteryUpdatedChanged)
+    def batteryLastUpdatedText(self):
+        return self._battery_updated_text()
+
+    @Property(bool, notify=batteryUpdatedChanged)
+    def batteryStale(self):
+        return self._battery_stale
+
+    @Property(str, notify=batteryUpdatedChanged)
+    def batterySummaryText(self):
+        if self._battery_level < 0:
+            return self._tr("mouse.battery_unknown", "Unknown")
+        battery_text = f"{self._battery_level}%"
+        age_text = self._battery_updated_text()
+        if self._battery_stale:
+            prefix = self._tr("mouse.battery_last_prefix", "Last ")
+            return f"{prefix}{battery_text} · {age_text}"
+        return f"{battery_text} · {age_text}"
 
     @Property(str, notify=debugLogChanged)
     def debugLog(self):
@@ -2252,6 +2344,57 @@ class Backend(QObject):
         if self._engine:
             self._engine.cfg = self._cfg
         self.settingsChanged.emit()
+        self.batteryUpdatedChanged.emit()
+
+    @Slot()
+    def refreshBattery(self):
+        self._emit_status_key(
+            "status.battery_refreshing",
+            "Refreshing battery...",
+        )
+        refresh = getattr(self._engine, "refresh_battery", None) if self._engine else None
+        if not callable(refresh):
+            self._set_battery_stale(True)
+            self._emit_status_key(
+                "status.battery_refresh_failed",
+                "Battery refresh failed",
+            )
+            return
+        try:
+            started = bool(refresh(manual=True))
+        except Exception as exc:
+            print(f"[Backend] Battery refresh request failed: {exc}")
+            started = False
+        if not started:
+            self._set_battery_stale(True)
+            self._emit_status_key(
+                "status.battery_refresh_failed",
+                "Battery refresh failed",
+            )
+
+    @Slot()
+    def reconnectMouse(self):
+        self._emit_status_key(
+            "status.mouse_reconnecting",
+            "Mouse listener is reconnecting...",
+        )
+        reconnect = getattr(self._engine, "reconnect_mouse", None) if self._engine else None
+        if not callable(reconnect):
+            self._emit_status_key(
+                "status.mouse_reconnect_failed",
+                "Mouse reconnect failed",
+            )
+            return
+        try:
+            started = bool(reconnect(reason="manual"))
+        except Exception as exc:
+            print(f"[Backend] Mouse reconnect request failed: {exc}")
+            started = False
+        if not started:
+            self._emit_status_key(
+                "status.mouse_reconnect_failed",
+                "Mouse reconnect failed",
+            )
 
     @Slot(bool)
     def setDebugMode(self, value):
@@ -2885,12 +3028,8 @@ class Backend(QObject):
         else:
             self._apply_device_layout(None)
         device_source = getattr(device, "source", "") if device is not None else ""
-        if (not connected or device_source == "evdev") and self._battery_level != -1:
-            self._battery_level = -1
-            self.batteryLevelChanged.emit()
-        if (not connected or device_source == "evdev") and self._battery_charging:
-            self._battery_charging = False
-            self.batteryChargingChanged.emit()
+        if not connected or device_source == "evdev":
+            self._clear_battery_state()
         if self._hid_features_ready != previous_hid_features_ready:
             self.hidFeaturesReadyChanged.emit()
             self.forceSensingChanged.emit()
@@ -3047,12 +3186,23 @@ class Backend(QObject):
     @Slot(int, bool)
     def _handleBatteryChange(self, level, charging):
         """Runs on Qt main thread."""
-        if level != self._battery_level:
-            self._battery_level = level
+        try:
+            level = max(0, min(100, int(level)))
+        except (TypeError, ValueError):
+            return
+        charging = bool(charging)
+        level_changed = level != self._battery_level
+        charging_changed = charging != self._battery_charging
+        self._battery_level = level
+        self._battery_charging = charging
+        self._battery_updated_at = time.time()
+        self._battery_stale = False
+        self._syncBatteryAgeTimer()
+        if level_changed:
             self.batteryLevelChanged.emit()
-        if charging != self._battery_charging:
-            self._battery_charging = charging
+        if charging_changed:
             self.batteryChargingChanged.emit()
+        self.batteryUpdatedChanged.emit()
 
     @Slot(str)
     def _handleDebugMessage(self, message):
