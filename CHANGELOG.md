@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.7.16
+
+This release makes personal settings migration clearer for new users.
+
+### Changed
+
+- Renamed the settings backup actions to **Export personal settings** and
+  **Import personal settings** so they are not confused with the app download.
+- Added in-app guidance for old-computer export and new-computer import.
+- Added a localized warning when someone tries to import the GitHub app zip
+  instead of a Mouser personal settings backup zip.
+- Updated README migration steps for the separate `Mouser-settings-*.zip`
+  personal settings package.
+
 ## v3.7.15
 
 This release fixes a packaged Windows startup failure in v3.7.14.

@@ -67,7 +67,7 @@ Logitech models.
 > **No install required.** Just download, extract, and double-click.
 
 1. Open the [**latest release page**](https://github.com/meiyoutou/Mouser-G502/releases/latest).
-2. Download the Windows G502 build: `Mouser-G502-3.7.15-qml-startup-fix-*.zip`.
+2. Download the Windows G502 build: `Mouser-G502-3.7.16-config-migration-guide-*.zip`.
 3. Extract it anywhere, for example Desktop or Documents.
 4. Run `Mouser.exe`.
 
@@ -99,9 +99,17 @@ That's it. The app opens, drops a tray / menu-bar icon, and starts remapping imm
   - `~/Library/Application Support/Mouser/config.json` (macOS)
   - `~/.config/Mouser/config.json` (Linux)
 - Use **Settings → Settings backup** to export/import shortcuts, profiles, the
-  actions ring, and personal settings. Mouser also keeps recent automatic
-  backups under the user settings folder.
+  actions ring, and personal settings. The file you import is the
+  `Mouser-settings-*.zip` created by Mouser, not the GitHub app download zip.
+  Mouser also keeps recent automatic backups under the user settings folder.
 - Logs rotate automatically (5 × 5 MB) under `%APPDATA%\Mouser\logs`, `~/Library/Logs/Mouser`, or `$XDG_STATE_HOME/Mouser/logs`.
+
+### Moving your personal settings to another computer
+
+1. On the old computer, open **Settings → Settings backup → Export personal settings**.
+2. Save the exported `Mouser-settings-YYYYMMDD-HHMMSS.zip` somewhere you can move, such as a USB drive, cloud drive, or private backup.
+3. On the new computer, install and open Mouser, then choose **Settings → Settings backup → Import personal settings**.
+4. Select the exported `Mouser-settings-*.zip`. Do not select the `Mouser-G502-*.zip` app package downloaded from GitHub.
 
 ---
 
@@ -121,7 +129,7 @@ That's it. The app opens, drops a tray / menu-bar icon, and starts remapping imm
 - **Mouse-to-mouse remap** — bind any button to act as left, right, middle, back, or forward click.
 - **Per-application profiles** — Mouser auto-switches mappings when the foreground app changes (e.g. Chrome vs. VS Code).
 - **Custom keyboard shortcuts** — record any key combination (e.g. `Ctrl+Shift+P`) directly in the UI.
-- **Settings backup / migration** — export your shortcuts, profiles, actions ring, and personal settings before reinstalling or moving to another computer, then import them back in one click.
+- **Settings backup / migration** — export a separate `Mouser-settings-*.zip` personal settings package before reinstalling or moving to another computer, then import that package back in one click.
 - **40+ built-in actions** — navigation, browser, editing, media, scroll-mode, and DPI shortcuts that adapt per platform.
 
 ### Device control

@@ -726,6 +726,18 @@ class SaveConfigTests(unittest.TestCase):
             )
             self.assertEqual(metadata["format"], config.CONFIG_EXPORT_FORMAT)
 
+    def test_import_user_config_rejects_app_download_zip_with_clear_code(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "Mouser-G502-3.7.16.zip"
+            with zipfile.ZipFile(source_path, "w") as zf:
+                zf.writestr("Mouser/Mouser.exe", "")
+
+            with self.assertRaises(config.ConfigImportError) as ctx:
+                config.import_user_config(str(source_path))
+
+            self.assertEqual(ctx.exception.code, "not_config_backup")
+            self.assertIn("personal settings backup", str(ctx.exception))
+
     def test_import_user_config_zip_backs_up_and_replaces_current(self):
         old_cfg = json.loads(json.dumps(config.DEFAULT_CONFIG))
         old_cfg["profiles"]["default"]["mappings"]["middle"] = "none"

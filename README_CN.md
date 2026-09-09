@@ -59,7 +59,7 @@
 > **无需安装。** 下载 → 解压 → 双击运行即可。
 
 1. 打开 [**最新 Release 页面**](https://github.com/meiyoutou/Mouser-G502/releases/latest)。
-2. 下载 Windows G502 版本：`Mouser-G502-3.7.15-qml-startup-fix-*.zip`。
+2. 下载 Windows G502 版本：`Mouser-G502-3.7.16-config-migration-guide-*.zip`。
 3. 解压到任意目录，例如桌面或文档。
 4. 双击运行 `Mouser.exe`。
 
@@ -91,8 +91,16 @@
   - `~/Library/Application Support/Mouser/config.json`（macOS）
   - `~/.config/Mouser/config.json`（Linux）
 - 可在 **设置 → 配置备份** 导出/导入快捷键、Profile、动作环和个人设置。
+  导入时选择的是 Mouser 自己导出的 `Mouser-settings-*.zip`，不是 GitHub 下载的程序 zip。
   Mouser 也会在用户设置文件夹里保留最近的自动备份。
 - 日志按 5 × 5 MB 自动滚动，保存于 `%APPDATA%\Mouser\logs`、`~/Library/Logs/Mouser` 或 `$XDG_STATE_HOME/Mouser/logs`。
+
+### 换电脑/重装时迁移个人配置
+
+1. 在旧电脑打开 **设置 → 配置备份 → 导出个人配置包**。
+2. 保存导出的 `Mouser-settings-YYYYMMDD-HHMMSS.zip`，可以放到 U 盘、网盘或你自己的私有备份里。
+3. 在新电脑解压并打开 Mouser，然后进入 **设置 → 配置备份 → 导入个人配置包**。
+4. 选择刚才导出的 `Mouser-settings-*.zip`。不要选择 GitHub 下载的 `Mouser-G502-*.zip`，那个是程序包。
 
 ---
 
@@ -112,8 +120,8 @@
 - **鼠标按键互映** — 任意按键都可绑定为左键 / 右键 / 中键 / 后退 / 前进。
 - **按应用 Profile** — 切换前台应用时（如 Chrome → VS Code）自动切换映射。
 - **自定义快捷键** — 在 UI 中直接录制任意组合键（例如 `Ctrl+Shift+P`）。
-- **配置备份 / 迁移** — 重装或换电脑前导出快捷键、Profile、动作环和个人设置，
-  到新电脑后一键导入恢复。
+- **配置备份 / 迁移** — 重装或换电脑前单独导出 `Mouser-settings-*.zip` 个人配置包，
+  到新电脑后导入这个包即可恢复。
 - **40+ 内置动作** — 导航、浏览器、编辑、媒体、滚动模式、DPI 等动作，会按平台自适配标签。
 
 ### 设备控制

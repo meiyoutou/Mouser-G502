@@ -35,6 +35,15 @@ CONFIG_EXPORT_FORMAT = "mouser-user-config"
 
 _LAST_AUTO_BACKUP_AT = 0.0
 
+
+class ConfigImportError(ValueError):
+    """User-facing import error with a stable code for localized UI messages."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 # Which mouse events map to which friendly button names
 # Order matches the Logi Options+ diagram (top view then side view)
 # Config keys are tied to *physical buttons*, not to which control happens to
@@ -645,7 +654,12 @@ def _load_import_config(source_path):
         with zipfile.ZipFile(source_path, "r") as zf:
             names = set(zf.namelist())
             if "config.json" not in names:
-                raise ValueError("Backup zip does not contain config.json")
+                raise ConfigImportError(
+                    "not_config_backup",
+                    "This is not a Mouser personal settings backup. "
+                    "Choose the Mouser-settings-*.zip file exported from Mouser, "
+                    "not the app download zip from GitHub.",
+                )
             with zf.open("config.json") as f:
                 raw = f.read().decode("utf-8")
         return json.loads(raw)

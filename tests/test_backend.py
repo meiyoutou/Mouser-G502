@@ -241,6 +241,34 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertTrue(active_profile_changes)
         self.assertEqual(statuses[-1], translate_string("zh_CN", "status.config_imported"))
 
+    def test_import_user_config_slot_explains_app_zip_mixup(self):
+        from core.config import ConfigImportError
+
+        backend = self._make_backend()
+        statuses = []
+        backend.statusMessage.connect(statuses.append)
+
+        with (
+            patch(
+                "PySide6.QtWidgets.QFileDialog.getOpenFileName",
+                return_value=("C:/tmp/Mouser-G502-3.7.16.zip", ""),
+            ),
+            patch(
+                "ui.backend.import_user_config",
+                side_effect=ConfigImportError(
+                    "not_config_backup",
+                    "not a personal settings backup",
+                ),
+            ) as import_mock,
+        ):
+            backend.importUserConfig()
+
+        import_mock.assert_called_once_with("C:/tmp/Mouser-G502-3.7.16.zip")
+        self.assertEqual(
+            statuses[-1],
+            translate_string("en", "status.config_import_wrong_zip"),
+        )
+
     def test_device_image_source_uses_encoded_file_url(self):
         backend = self._make_backend(root_dir="/tmp/Mouser Build")
 

@@ -841,6 +841,17 @@ Item {
                         width: parent.width
                     }
 
+                    Text {
+                        text: s["scroll.config_backup_steps"]
+                        font {
+                            family: uiState.fontFamily
+                            pixelSize: 12
+                        }
+                        color: scrollPage.theme.textSecondary
+                        wrapMode: Text.WordWrap
+                        width: parent.width
+                    }
+
                     RowLayout {
                         width: parent.width
                         spacing: 10

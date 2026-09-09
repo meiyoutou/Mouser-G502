@@ -19,6 +19,7 @@ from PySide6.QtCore import QCoreApplication, QMetaObject, QObject, Property, QTi
 from core.accessibility import is_process_trusted
 from core.config import (
     BUTTON_NAMES, CONFIG_DIR, CONFIG_FILE,
+    ConfigImportError,
     export_user_config, import_user_config,
     load_config, save_config, get_active_mappings,
     PROFILE_BUTTON_NAMES, set_mapping, create_profile, delete_profile,
@@ -2101,10 +2102,12 @@ class Backend(QObject):
     def importUserConfig(self):
         from PySide6.QtWidgets import QFileDialog
 
+        desktop = Path.home() / "Desktop"
+        base_dir = desktop if desktop.is_dir() else Path.home()
         selected, _ = QFileDialog.getOpenFileName(
             None,
             self._tr("dialog.import_config", "Import Mouser Settings"),
-            str(Path.home()),
+            str(base_dir),
             self._tr(
                 "dialog.config_restore_filter",
                 "Mouser settings backup (*.zip *.json)",
@@ -2114,6 +2117,23 @@ class Backend(QObject):
             return
         try:
             cfg = import_user_config(selected)
+        except ConfigImportError as exc:
+            if exc.code == "not_config_backup":
+                self._emit_status_key(
+                    "status.config_import_wrong_zip",
+                    (
+                        "That zip is not a personal settings backup. "
+                        "Choose the Mouser-settings-*.zip exported from Mouser, "
+                        "not the GitHub app download."
+                    ),
+                )
+                return
+            self._emit_status_key(
+                "status.config_import_failed",
+                "Could not import settings: {error}",
+                error=str(exc),
+            )
+            return
         except Exception as exc:
             self._emit_status_key(
                 "status.config_import_failed",

@@ -168,6 +168,7 @@ class LocaleManagerTranslationTests(unittest.TestCase):
         required = {
             "scroll.config_backup",
             "scroll.config_backup_desc",
+            "scroll.config_backup_steps",
             "scroll.config_export",
             "scroll.config_import",
             "scroll.config_open_folder",
@@ -175,6 +176,7 @@ class LocaleManagerTranslationTests(unittest.TestCase):
             "status.config_imported",
             "status.config_export_failed",
             "status.config_import_failed",
+            "status.config_import_wrong_zip",
             "status.config_folder_missing",
             "dialog.export_config",
             "dialog.import_config",
