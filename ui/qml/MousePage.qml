@@ -1000,9 +1000,10 @@ Item {
                                     Text {
                                         text: backend.mouseConnected
                                               ? (s["mouse.connected"]
-                                                 + (backend.connectionType !== ""
-                                                    ? ((s["mouse.connected_via_prefix"] || " via ")
-                                                       + backend.connectionType : ""))
+                                                  + (backend.connectionType !== ""
+                                                     ? ((s["mouse.connected_via_prefix"] || " via ")
+                                                        + backend.connectionType)
+                                                     : ""))
                                               : s["mouse.not_connected"]
                                         font { family: uiState.fontFamily; pixelSize: 11 }
                                         color: backend.mouseConnected

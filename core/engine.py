@@ -1575,7 +1575,7 @@ class Engine:
                     _last_battery = now - _battery_poll_interval
                 if (
                     now - _last_battery >= _battery_poll_interval
-                    and self._background_hid_poll_allowed(now, allow_hidden=True)
+                    and self._background_hid_poll_allowed(now)
                 ):
                     _last_battery = now
                     self._record_background_hid_poll(now)

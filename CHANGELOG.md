@@ -1,5 +1,24 @@
 # Changelog
 
+## v3.7.15
+
+This release fixes a packaged Windows startup failure in v3.7.14.
+
+### Fixed
+
+- Fixed a QML expression parsing error in the Mouse & Profiles page connection
+  status text. The v3.7.14 Windows package could log FATAL: Failed to load QML
+  and exit before showing the window; v3.7.15 starts normally again.
+- Reduced background HID battery reads while the Mouser window is hidden or the
+  system is idle, which avoids unnecessary wireless wake-ups for MX/G502-style
+  Logitech receivers.
+
+### Notes
+
+- The v3.7.14 settings backup/import/export feature is unchanged.
+- Public source and release packages still do not include personal config, logs,
+  screenshots, or G502 onboard-memory backups.
+
 ## v3.7.14
 
 This release adds user settings backup and migration support for the G502 fork.
