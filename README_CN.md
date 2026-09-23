@@ -59,7 +59,7 @@
 > **无需安装。** 下载 → 解压 → 双击运行即可。
 
 1. 打开 [**最新 Release 页面**](https://github.com/meiyoutou/Mouser-G502/releases/latest)。
-2. 下载 Windows G502 版本：`Mouser-G502-3.7.17-multimonitor-screenshot-preview-*.zip`。
+2. 下载 Windows G502 版本：`Mouser-Windows.zip`。
 3. 解压到任意目录，例如桌面或文档。
 4. 双击运行 `Mouser.exe`。
 
