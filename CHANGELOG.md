@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.7.17
+
+This release fixes the Windows region screenshot preview on multi-monitor setups.
+
+### Fixed
+
+- Kept the visible region-selection preview aligned with the selected capture
+  region on dual-monitor and multi-monitor layouts.
+
 ## v3.7.16
 
 This release makes personal settings migration clearer for new users.

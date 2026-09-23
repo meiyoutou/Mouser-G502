@@ -67,7 +67,7 @@ Logitech models.
 > **No install required.** Just download, extract, and double-click.
 
 1. Open the [**latest release page**](https://github.com/meiyoutou/Mouser-G502/releases/latest).
-2. Download the Windows G502 build: `Mouser-G502-3.7.16-config-migration-guide-*.zip`.
+2. Download the Windows G502 build: `Mouser-G502-3.7.17-multimonitor-screenshot-preview-*.zip`.
 3. Extract it anywhere, for example Desktop or Documents.
 4. Run `Mouser.exe`.
 

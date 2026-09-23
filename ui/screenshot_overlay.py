@@ -117,7 +117,11 @@ class RegionSelectionOverlay(QWidget):
         if event.button() != Qt.MouseButton.LeftButton or self._start is None:
             return
         self._current = self._event_global_pos(event)
-        rect = QRect(self._start, self._current).normalized()
+        rect = self._selection_global_rect()
+        if rect is None:
+            self.cancelled.emit()
+            self.close()
+            return
         if rect.width() < 2 or rect.height() < 2:
             self.cancelled.emit()
         else:
@@ -127,15 +131,27 @@ class RegionSelectionOverlay(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 90))
-        if self._start is not None and self._current is not None:
-            selected = QRect(self._start, self._current).normalized()
-            local = selected.translated(-self._bounds.left, -self._bounds.top)
+        local = self._selection_local_rect()
+        if local is not None:
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
             painter.fillRect(local, Qt.GlobalColor.transparent)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             painter.setPen(QPen(QColor(255, 255, 255), 2))
             painter.drawRect(local.adjusted(0, 0, -1, -1))
         painter.end()
+
+    def _selection_global_rect(self) -> QRect | None:
+        if self._start is None or self._current is None:
+            return None
+        return QRect(self._start, self._current).normalized()
+
+    def _selection_local_rect(self) -> QRect | None:
+        if self._start is None or self._current is None:
+            return None
+        return QRect(
+            self.mapFromGlobal(self._start),
+            self.mapFromGlobal(self._current),
+        ).normalized()
 
     @staticmethod
     def _event_global_pos(event: QMouseEvent) -> QPoint:
