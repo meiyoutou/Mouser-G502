@@ -233,7 +233,11 @@ class WindowsScreenshotController(QObject):
 
         self._pending_capture = capture
         self._pending_action = action_id
-        self._overlay = RegionSelectionOverlay(_union_rect(m.logical for m in capture.monitor_maps))
+        logical_screens = tuple(m.logical for m in capture.monitor_maps)
+        self._overlay = RegionSelectionOverlay(
+            _union_rect(logical_screens),
+            screen_rects=logical_screens,
+        )
         self._overlay.selected.connect(self._finish_region)
         self._overlay.cancelled.connect(self._cancel_region)
         self._overlay.show()

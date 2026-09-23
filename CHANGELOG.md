@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.7.18
+
+This release fixes another Windows multi-monitor region screenshot overlay issue.
+
+### Fixed
+
+- Split the region-selection shade into one overlay per display so opening the
+  screenshot selector no longer leaves a stale highlighted patch on one monitor.
+- Kept cross-monitor dragging on one shared global selection while painting each
+  monitor preview in that monitor's own coordinate space.
+
 ## v3.7.17
 
 This release fixes the Windows region screenshot preview on multi-monitor setups.
