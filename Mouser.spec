@@ -201,11 +201,22 @@ _qt_keep = {
 
 def _should_keep(name):
     """Return True if this binary/data entry should be kept."""
+    base = os.path.basename(name)
+    lower_base = base.lower()
+
+    # PySide6 6.11.x Qt6Core imports the Windows system ICU exports without
+    # the ICU version suffix.  PyInstaller may collect standalone ICU 78 DLLs
+    # (icuuc.dll/icudt78.dll) whose exports are version-suffixed, which causes
+    # "DLL load failed while importing QtWidgets: The specified procedure could
+    # not be found" on startup.  Do not bundle these Windows ICU DLLs; let Qt
+    # resolve the system ICU instead.
+    if lower_base.startswith("icu") and lower_base.endswith(".dll"):
+        return False
+
     # Always keep non-PySide6 files
     if "PySide6" not in name and "pyside6" not in name.lower():
         return True
     # Check the filename (last component)
-    base = os.path.basename(name)
     stem = os.path.splitext(base)[0]
     # Keep if it's in our whitelist
     if stem in _qt_keep:
