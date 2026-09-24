@@ -38,6 +38,30 @@ def _resolve_root_dir():
 ROOT = _resolve_root_dir()
 sys.path.insert(0, ROOT)
 
+
+def _prepare_windows_dll_search_paths():
+    """Make PyInstaller's bundled Qt DLL folders visible before PySide6 imports."""
+    if not sys.platform.startswith("win"):
+        return
+    add_dll_directory = getattr(os, "add_dll_directory", None)
+    if add_dll_directory is None:
+        return
+    candidates = [
+        ROOT,
+        os.path.join(ROOT, "PySide6"),
+        os.path.join(ROOT, "shiboken6"),
+    ]
+    for candidate in candidates:
+        if not os.path.isdir(candidate):
+            continue
+        try:
+            add_dll_directory(candidate)
+        except (FileNotFoundError, OSError):
+            pass
+
+
+_prepare_windows_dll_search_paths()
+
 from core.log_setup import setup_logging
 setup_logging()
 

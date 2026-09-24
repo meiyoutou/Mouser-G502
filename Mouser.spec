@@ -97,6 +97,7 @@ a = Analysis(
         "ctypes.wintypes",
         "ui.locale_manager",
         # PySide6 QML runtime
+        "PySide6.QtWidgets",
         "PySide6.QtQuick",
         "PySide6.QtQuickControls2",
         "PySide6.QtQml",

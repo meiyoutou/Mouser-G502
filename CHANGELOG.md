@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.7.19
+
+This release fixes a packaged Windows startup failure that could show
+`DLL load failed while importing QtWidgets`.
+
+### Fixed
+
+- Added the bundled PySide6 and shiboken6 folders to the Windows DLL search path
+  before importing Qt, so extracted portable packages can find QtWidgets and its
+  runtime dependencies more reliably on other PCs.
+- Declared `PySide6.QtWidgets` explicitly in the Windows PyInstaller build.
+
 ## v3.7.18
 
 This release fixes another Windows multi-monitor region screenshot overlay issue.
