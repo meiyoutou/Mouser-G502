@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.7.20
+
+This release keeps the Windows DLL search path handles alive for the lifetime
+of the app, fixing a remaining packaged startup failure while importing
+`PySide6.QtWidgets` on some PCs.
+
+### Fixed
+
+- Persist the handles returned by `os.add_dll_directory()` so Windows continues
+  to search the bundled PySide6 and shiboken6 folders during Qt imports.
+
 ## v3.7.19
 
 This release fixes a packaged Windows startup failure that could show
