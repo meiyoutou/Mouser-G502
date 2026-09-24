@@ -312,8 +312,24 @@ def _cleanup():
         shutil.rmtree(trans, ignore_errors=True)
         print("  [cleanup] removed translations/")
 
+
+def _ensure_pyside6_adjacent_shiboken():
+    """Keep shiboken6.abi3.dll next to pyside6.abi3.dll for Windows loader compatibility."""
+    py_side_dir = os.path.join("dist", "Mouser", "_internal", "PySide6")
+    shiboken_dir = os.path.join("dist", "Mouser", "_internal", "shiboken6")
+    src = os.path.join(shiboken_dir, "shiboken6.abi3.dll")
+    dst = os.path.join(py_side_dir, "shiboken6.abi3.dll")
+    if not os.path.isfile(src) or not os.path.isdir(py_side_dir):
+        print("  [cleanup] skipped PySide6-adjacent shiboken6.abi3.dll")
+        return
+    if not os.path.isfile(dst) or not os.path.samefile(src, dst):
+        shutil.copy2(src, dst)
+        print("  [cleanup] copied shiboken6.abi3.dll next to pyside6.abi3.dll")
+
+
 print("[Mouser] Post-build cleanup...")
 _cleanup()
+_ensure_pyside6_adjacent_shiboken()
 print("[Mouser] Cleanup done.")
 
 # ── macOS App Bundle ───────────────────────────────────────────────────
