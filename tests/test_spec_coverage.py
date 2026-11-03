@@ -139,7 +139,11 @@ def _datas_sources(call):
     """Repo-relative source paths of every datas entry, plus bare names."""
     sources = []
     datas = _keyword(call, "datas")
-    for elt in getattr(datas, "elts", []):
+    def literal_entries(node):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return literal_entries(node.left) + literal_entries(node.right)
+        return list(getattr(node, "elts", []))
+    for elt in literal_entries(datas):
         if not isinstance(elt, ast.Tuple) or not elt.elts:
             continue
         src = elt.elts[0]

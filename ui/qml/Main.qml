@@ -39,7 +39,8 @@ ApplicationWindow {
     property var navModel: {
         var items = [
             { icon: "mouse-simple", tipKey: "nav.mouse_profiles", page: 0 },
-            { icon: "sliders-horizontal", tipKey: "nav.point_scroll", page: 1 }
+            { icon: "sliders-horizontal", tipKey: "nav.point_scroll", page: 1 },
+            { icon: "microphone", tipKey: "nav.voice_typing", page: 4 }
         ]
         if (backend.hapticSupported) {
             items.push({ icon: "circle", tipKey: "nav.haptic_feedback", page: 2 })
@@ -123,6 +124,7 @@ ApplicationWindow {
 
                         delegate: FocusScope {
                             id: navItem
+                            objectName: "navPage" + modelData.page
                             width: sidebar.width
                             height: 56
                             activeFocusOnTab: true
@@ -291,6 +293,10 @@ ApplicationWindow {
             Loader {
                 active: (root.currentPage === 3 || item) && backend.deviceHasActionsRing && backend.actionsRingActive
                 source: "ActionsRingConfig.qml"
+            }
+            Loader {
+                active: root.currentPage === 4 || item
+                source: "SpeechPage.qml"
             }
         }
     }

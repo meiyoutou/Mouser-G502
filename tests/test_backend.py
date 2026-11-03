@@ -13,6 +13,16 @@ from core.config import DEFAULT_CONFIG
 from core.logi_device_catalog import G502_OS_LEVEL_BUTTONS
 from core.updater import UpdateCheckState
 from ui.locale_manager import translate_string
+from tests.config_sandbox import config_sandbox
+
+
+def setUpModule():
+    global _config_sandbox
+    _config_sandbox = config_sandbox()
+
+
+def tearDownModule():
+    _config_sandbox.close()
 
 try:
     from PySide6.QtCore import QCoreApplication, Qt, QUrl
@@ -141,6 +151,124 @@ class BackendDeviceLayoutTests(unittest.TestCase):
 
         self.assertEqual(backend.effectiveDeviceLayoutKey, "generic_mouse")
         self.assertFalse(backend.hasInteractiveDeviceLayout)
+
+    def test_device_selection_keeps_shortcuts_and_ignores_keyboards(self):
+        engine = _FakeEngine()
+        engine.select_logitech_device = unittest.mock.Mock()
+        backend = self._make_backend(engine=engine)
+        before = copy.deepcopy(backend._cfg["profiles"])
+        backend._device_inventory_snapshot = {"devices": [
+            {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "kind": "mouse", "serial": "12345678"},
+            {"identity": "keyboard1", "mouse": False, "kind": "keyboard"},
+        ]}
+        with patch("ui.backend.save_config"):
+            backend.selectLogitechDevice("keyboard1")
+            engine.select_logitech_device.assert_not_called()
+            backend.selectLogitechDevice("mouse1")
+        self.assertEqual(backend.preferredLogitechDeviceId, "mouse1")
+        self.assertEqual(backend._cfg["profiles"], before)
+        self.assertEqual(engine.select_logitech_device.call_args.args[0]["identity"], "mouse1")
+
+    def test_device_selection_save_failure_keeps_previous_target(self):
+        engine = _FakeEngine()
+        engine.select_logitech_device = unittest.mock.Mock()
+        backend = self._make_backend(engine=engine)
+        backend._cfg["settings"]["preferred_logi_device"] = {"identity": "previous", "name": "Old Mouse"}
+        backend._device_inventory_snapshot = {"devices": [{"identity": "new", "mouse": True}]}
+        with patch("ui.backend.save_config", side_effect=OSError("disk unavailable")):
+            backend.selectLogitechDevice("new")
+        self.assertEqual(backend.preferredLogitechDeviceId, "previous")
+        engine.select_logitech_device.assert_not_called()
+
+    def test_device_choices_and_scan_message_follow_language(self):
+        backend = self._make_backend()
+        backend._device_inventory_snapshot = {"status": "ready", "devices": [
+            {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "slot": 2,
+             "transport": "USB Receiver", "online": True, "status": "online", "model_confirmed": True},
+        ]}
+        backend._cfg["settings"]["language"] = "zh_CN"
+        self.assertIn("槽位 2", backend.logitechDeviceChoices[1]["label"])
+        self.assertIn("在线", backend.logitechDeviceChoices[1]["label"])
+        self.assertIn("USB 接收器", backend.logitechDeviceChoices[1]["label"])
+        self.assertNotIn("USB Receiver", backend.logitechDeviceChoices[1]["label"])
+        self.assertNotIn("mouse.device_", backend.deviceDiscoveryMessage)
+        backend._cfg["settings"]["language"] = "en"
+        self.assertIn("slot 2", backend.logitechDeviceChoices[1]["label"])
+        self.assertIn("USB Receiver", backend.logitechDeviceChoices[1]["label"])
+
+    def test_header_shows_actual_automatic_target_and_follows_language(self):
+        backend = self._make_backend()
+        backend._device_inventory_snapshot = {"selected": "mouse1", "devices": [
+            {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "online": True},
+            {"identity": "mouse2", "mouse": True, "name": "G502 HERO", "online": True},
+        ]}
+        backend._cfg["settings"]["language"] = "zh_CN"
+        self.assertEqual(backend.managedLogitechDeviceLabel, "MX Master 2S · 自动")
+        backend._cfg["settings"]["language"] = "en"
+        self.assertEqual(backend.managedLogitechDeviceLabel, "MX Master 2S · Automatic")
+
+    def test_header_explicit_absent_target_never_shows_other_online_mouse(self):
+        backend = self._make_backend()
+        backend._cfg["settings"]["language"] = "zh_CN"
+        backend._cfg["settings"]["preferred_logi_device"] = {"identity": "saved", "name": "MX Master 2S"}
+        backend._device_inventory_snapshot = {"selected": "other", "devices": [
+            {"identity": "other", "mouse": True, "name": "G502 HERO", "online": True},
+        ]}
+        self.assertEqual(backend.managedLogitechDeviceLabel, "MX Master 2S · 离线")
+
+    def test_header_explicit_target_has_no_automatic_marker(self):
+        backend = self._make_backend()
+        backend._cfg["settings"]["preferred_logi_device"] = {"identity": "mouse1"}
+        backend._device_inventory_snapshot = {"selected": "mouse1", "devices": [
+            {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "online": True},
+        ]}
+        self.assertEqual(backend.managedLogitechDeviceLabel, "MX Master 2S")
+
+    def test_empty_automatic_header_does_not_guess_an_offline_mouse(self):
+        backend = self._make_backend()
+        backend._cfg["settings"]["language"] = "zh_CN"
+        backend._device_inventory_snapshot = {"selected": "", "devices": [
+            {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "online": False},
+        ]}
+        self.assertEqual(backend.managedLogitechDeviceLabel, "自动选择（第一只可用鼠标）")
+
+    def test_connection_badge_translates_without_changing_transport_identity(self):
+        backend = self._make_backend()
+        for language, expected in [("zh_CN", "USB 接收器"), ("zh_TW", "USB 接收器"), ("en", "USB Receiver")]:
+            backend._cfg["settings"]["language"] = language
+            backend._connected_device_transport = "USB Receiver"
+            self.assertEqual(backend.connectionType, expected)
+            self.assertEqual(backend._connected_device_transport, "USB Receiver")
+        backend._cfg["settings"]["language"] = "zh_CN"
+        for transport, expected in [("Bluetooth", "蓝牙"), ("Logi Bolt", "Logi Bolt 接收器"),
+                                    ("USB", "USB 有线"), ("Bluetooth Low Energy", "低功耗蓝牙"),
+                                    ("custom transport", "custom transport"), ("", "")]:
+            backend._connected_device_transport = transport
+            self.assertEqual(backend.connectionType, expected)
+
+    def test_switching_connected_device_updates_layout_without_changing_shortcuts(self):
+        from core.logi_devices import build_connected_device_info
+        device = build_connected_device_info(product_name="MX Master 2S", transport="USB Receiver")
+        engine = _FakeEngine(device_connected=True, connected_device=device)
+        backend = self._make_backend(engine=engine)
+        before = copy.deepcopy(backend._cfg["profiles"])
+        first_layout = backend.effectiveDeviceLayoutKey
+        engine.connected_device = build_connected_device_info(product_id=0xC08B, product_name="G502 HERO", transport="USB")
+        with patch("ui.backend.save_config"):
+            backend._sync_connected_device_info()
+        self.assertNotEqual(backend.effectiveDeviceLayoutKey, first_layout)
+        self.assertEqual(backend.effectiveDeviceLayoutKey, "g502")
+        self.assertEqual(backend.deviceLayoutOverrideKey, "")
+        self.assertEqual(backend._cfg["profiles"], before)
+
+    def test_config_import_applies_saved_device_preference(self):
+        engine = _FakeEngine()
+        engine.select_logitech_device = unittest.mock.Mock()
+        backend = self._make_backend(engine=engine)
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["settings"]["preferred_logi_device"] = {"identity": "saved"}
+        backend._sync_after_user_config_import(cfg)
+        engine.select_logitech_device.assert_called_once_with({"identity": "saved"})
 
     def test_start_g502_raw_hid_learning_enables_debug_and_calls_engine(self):
         engine = _FakeEngine()

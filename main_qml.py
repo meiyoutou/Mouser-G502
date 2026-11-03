@@ -1240,6 +1240,24 @@ def main():
         app._mouser_screenshot_controller = screenshot_controller
         set_screenshot_action_handler(screenshot_controller.request_action)
 
+    from core.key_simulator import set_speech_action_handler
+    from ui.speech_to_text import SpeechToTextController
+
+    speech_controller = SpeechToTextController(
+        status_callback=backend.statusMessage.emit,
+        settings_getter=backend.speech_to_text_settings,
+        translator=backend._tr,
+        parent=app,
+    )
+    app._mouser_speech_controller = speech_controller
+    speech_controller.pendingTextChanged.connect(backend.updateSpeechPendingText)
+    speech_controller.runtimeChanged.connect(backend.updateSpeechActiveModel)
+    speech_controller.levelChanged.connect(backend.updateSpeechAudioLevel)
+    speech_controller.busyChanged.connect(backend.updateSpeechBusy)
+    locale_mgr.languageChanged.connect(speech_controller.refresh_language)
+    app.aboutToQuit.connect(speech_controller.shutdown)
+    set_speech_action_handler(speech_controller.request_action)
+
     # ── QML Engine ─────────────────────────────────────────────
     qml_engine = QQmlApplicationEngine()
     qml_engine.addImageProvider("appicons", AppIconProvider(ROOT))
@@ -1470,4 +1488,10 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--check-speech-runtime" in sys.argv:
+        index = sys.argv.index("--check-speech-runtime")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit(2)
+        from core.speech_runtime_check import run_check
+        raise SystemExit(run_check(sys.argv[index + 1]))
     main()

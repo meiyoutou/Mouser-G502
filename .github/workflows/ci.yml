@@ -28,10 +28,13 @@ jobs:
             libxcb-keysyms1 \
             libxcb-render-util0 \
             libxcb-shape0 \
-            libxcb-xkb1
+            libxcb-xkb1 \
+            libportaudio2
 
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        # Exercise optional voice tests without bundling these dependencies in
+        # the default mouse-only application.
+        run: python -m pip install -r requirements-voice.txt
 
       - name: Compile Python sources
         run: python -m py_compile main_qml.py core/*.py ui/*.py

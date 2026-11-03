@@ -31,6 +31,10 @@ from core.logi_devices import (
 )
 
 _HID_MODULE_NAME = None
+from core.logi_discovery import (
+    DiscoveredDevice, IdentityProbe, choose_device, inventory_candidates,
+    interface_group, is_receiver,
+)
 try:
     # The PyPI hidapi Linux wheels expose `hid` as the libusb backend and
     # `hidraw` as the hidraw backend. Bluetooth HID devices only work through
@@ -1080,6 +1084,7 @@ class HidGestureListener:
         # fallback while the device is still emitting it.
         self._extra_divert_acks: set[int] = set()
         self._dev       = None          # hid.device()
+        self._short_dev = None          # receiver's separate Windows report-0x10 collection
         self._thread    = None
         self._running   = False
         self._feat_idx  = None          # feature index of REPROG_V4
@@ -1119,6 +1124,17 @@ class HidGestureListener:
         self._last_logged_battery = None
         self._last_battery_event = None
         self._connected_device_info = None
+        self._inventory_enabled = False
+        self._inventory_devices = ()
+        self._inventory_receivers = ()
+        self._inventory_status = "idle"
+        self._inventory_preference = {}
+        self._inventory_target = None
+        self._binding_invalidated = False
+        self._inventory_refresh_requested = threading.Event()
+        self._inventory_signature = ()
+        self._inventory_checked_at = 0.0
+        self._stopping = threading.Event()
         self._last_controls = []   # REPROG_V4 controls from last connection
         self._consecutive_request_timeouts = 0
         # 0x2121 Hi-Res Wheel + 0x2150 Thumbwheel native-invert state.
@@ -1175,6 +1191,7 @@ class HidGestureListener:
                     "[HidGesture] Linux hidraw module is unavailable; Bluetooth "
                     "Logitech HID++ devices may not enumerate"
                 )
+        self._stopping.clear()
         self._running = True
         _register_atexit_listener(self)
         self._thread = threading.Thread(
@@ -1183,6 +1200,7 @@ class HidGestureListener:
         return True
 
     def stop(self):
+        self._stopping.set()
         # Best-effort revert before tearing down, so a graceful exit leaves the
         # device exactly as we found it. We restore the wheel-mode byte captured
         # at connect rather than writing a composed default: the resolution bit
@@ -1191,7 +1209,7 @@ class HidGestureListener:
         # session will see an unexpected divert state and the user needs the
         # breadcrumb to debug it. We do not propagate -- ``stop`` must always
         # complete the rest of teardown (close device, join thread).
-        if self._dev is not None and self._wheel_divert_state:
+        if self._dev is not None and self._wheel_divert_state and not self._binding_invalidated:
             try:
                 if self._hires_wheel_mode_initial is not None:
                     self._write_wheel_mode(self._hires_wheel_mode_initial)
@@ -1205,6 +1223,7 @@ class HidGestureListener:
                 print(f"[HidGesture] stop: horizontal invert revert failed: {exc}")
             self._wheel_divert_state = False
         self._running = False
+        self._close_short_channel()
         d = self._dev
         if d:
             try:
@@ -1391,6 +1410,11 @@ class HidGestureListener:
                         add_info(dict(info, source="hidapi-enumerate"))
                         hidapi_candidates += 1
                         continue
+                    if usage_page == 1 and usage == 2:
+                        # Unknown Logitech mouse models still belong in the
+                        # inventory, even without vendor usage metadata.
+                        add_info(dict(info, source="hidapi-mouse-enumerate"))
+                        continue
                     if resolve_device(product_id=pid, product_name=product):
                         print(
                             "[HidGesture] Accepting known Logitech device "
@@ -1428,6 +1452,8 @@ class HidGestureListener:
     def _tx(self, report_id, feat, func, params):
         """Transmit an HID++ message.  Always uses 20-byte long format
         because BLE HID collections typically only support long output reports."""
+        if self._binding_invalidated:
+            raise IOError("selected slot identity needs revalidation before feature commands")
         buf = [0] * LONG_LEN
         buf[0] = LONG_ID                 # always long for BLE compat
         buf[1] = self._dev_idx
@@ -1445,6 +1471,19 @@ class HidGestureListener:
         can trigger reconnection."""
         dev = self._dev
         if dev is None:
+            return None
+        if self._short_dev is not None:
+            deadline = time.monotonic() + timeout_ms / 1000
+            while not self._stopping.is_set():
+                d = self._short_dev.read(64, 1)
+                if d:
+                    return list(d)
+                remaining = int((deadline - time.monotonic()) * 1000)
+                if remaining <= 0:
+                    return None
+                d = dev.read(64, min(80, remaining))
+                if d:
+                    return list(d)
             return None
         d = dev.read(64, timeout_ms)
         return list(d) if d else None
@@ -1478,11 +1517,16 @@ class HidGestureListener:
             msg = _parse(raw)
             if msg is None:
                 continue
-            _, r_feat, r_func, r_sw, r_params = msg
+            r_dev, r_feat, r_func, r_sw, r_params = msg
+            if r_dev != self._dev_idx:
+                self._on_report(raw)  # receiver topology events, never foreign mouse actions
+                continue
 
             # HID++ error (feature-index 0xFF)
-            if r_feat == 0xFF:
-                code = r_params[1] if len(r_params) > 1 else 0
+            if (r_feat in (0xFF, 0x8F) and r_func == (feat >> 4)
+                    and r_sw == (feat & 0x0F) and len(r_params) >= 2
+                    and r_params[0] == ((func << 4) | MY_SW)):
+                code = r_params[1]
                 code_name = HIDPP_ERROR_NAMES.get(code, "UNKNOWN")
                 print(f"[HidGesture] HID++ error 0x{code:02X} ({code_name}) "
                       f"for feat=0x{feat:02X} func=0x{func:X} "
@@ -2738,7 +2782,20 @@ class HidGestureListener:
         msg = _parse(raw)
         if msg is None:
             return
-        _, feat, func, _sw, params = msg
+        dev_idx, feat, func, _sw, params = msg
+        if (self._inventory_enabled and self._inventory_target
+                and is_receiver(self._inventory_target.candidate)
+                and 1 <= dev_idx <= 6 and feat in (0x40, 0x41)):
+            # Receiver link/unpair events request identity revalidation only.
+            # They must not become mouse actions or wake a different slot.
+            self._inventory_refresh_requested.set()
+            if dev_idx == self._dev_idx:
+                self._binding_invalidated = True
+            return
+        if dev_idx != self._dev_idx:
+            return
+        if self._binding_invalidated:
+            return
 
         # Unsolicited battery status broadcast (feature 0x1004 / 0x1000,
         # event func 0) — pushed to the UI so charging shows instantly.
@@ -2746,11 +2803,11 @@ class HidGestureListener:
         # carry our software-id); genuine broadcasts use software-id 0.
         if (self._battery_idx is not None
                 and feat == self._battery_idx
-                and func == 0 and _sw != MY_SW):
+                and func == 0 and _sw == 0):
             self._handle_battery_notification(params)
             return
 
-        if feat != self._feat_idx:
+        if _sw != 0 or feat != self._feat_idx:
             return
 
         if func == 1:
@@ -2839,6 +2896,143 @@ class HidGestureListener:
 
     # ── connect / main loop ───────────────────────────────────────
 
+    def configure_device_selection(self, preferred=None):
+        """Enable Windows inventory; selection is explicit, not cache-based."""
+        self._inventory_enabled = sys.platform.startswith("win")
+        self._inventory_preference = dict(preferred or {})
+        self._inventory_refresh_requested.set()
+
+    @property
+    def device_inventory(self):
+        return {"devices": [d.to_dict() for d in self._inventory_devices],
+                "receivers": list(self._inventory_receivers),
+                "status": self._inventory_status,
+                "selected": self._inventory_target.identity if self._inventory_target else ""}
+
+    def refresh_device_inventory(self):
+        self._inventory_refresh_requested.set()
+
+    @staticmethod
+    def _inventory_infos_signature(infos):
+        return tuple(sorted((interface_group(i), int(i.get("product_id", 0)),
+                             str(i.get("product_string") or "")) for i in infos))
+
+    def _refresh_device_inventory(self, infos, *, live=False):
+        """Read identity only. Never divert a device while enumerating it."""
+        self._inventory_refresh_requested.clear()
+        self._inventory_status = "scanning"
+        devices, receivers = [], []
+        active_path = ""
+        if live and self._inventory_target:
+            active_path = interface_group(self._inventory_target.candidate)
+        for candidate in inventory_candidates(infos):
+            if self._stopping.is_set():
+                break
+            handle = None
+            short_handle = None
+            owned = False
+            try:
+                if active_path and interface_group(candidate) == active_path:
+                    handle = self._dev
+                elif HIDAPI_OK:
+                    if _HID_API_STYLE == "hidapi":
+                        handle = _hid.device()
+                        owned = True
+                        handle.open_path(candidate["path"])
+                    else:
+                        handle = _HidDeviceCompat(candidate["path"])
+                        owned = True
+                    handle.set_nonblocking(False)
+                if handle is None:
+                    raise OSError("HID interface unavailable")
+                short_handle = self._open_short_channel(candidate) if owned else self._short_dev
+                probe = IdentityProbe(handle, on_unmatched=self._on_report if not owned else None,
+                                      cancelled=lambda: self._stopping.is_set() or (live and self._reconnect_requested),
+                                      short_handle=short_handle)
+                found = probe.scan(candidate)
+                devices.extend(found)
+                if is_receiver(candidate):
+                    receivers.append({"status": "detected", "devices": len(found)})
+            except Exception as exc:
+                print(f"[HidGesture] Read-only inventory failed PID=0x{int(candidate.get('product_id', 0)):04X}: {exc}")
+                if is_receiver(candidate):
+                    receivers.append({"status": "communication_failed", "devices": 0})
+                else:
+                    spec = resolve_device(candidate.get("product_id"), candidate.get("product_string"))
+                    if spec or (candidate.get("usage_page") == 1 and candidate.get("usage") == 2):
+                        devices.append(DiscoveredDevice(candidate, name=candidate.get("product_string") or "",
+                                                        kind="mouse", status="communication_failed",
+                                                        model_key=spec.key if spec else ""))
+            finally:
+                if owned and short_handle is not None:
+                    try:
+                        short_handle.close()
+                    except Exception:
+                        pass
+                if owned and handle is not None:
+                    try:
+                        handle.close()
+                    except Exception:
+                        pass
+        self._inventory_devices = tuple(devices)
+        self._inventory_receivers = tuple(receivers)
+        self._inventory_status = "ready"
+        self._inventory_signature = self._inventory_infos_signature(infos)
+        self._inventory_checked_at = time.monotonic()
+        return choose_device(devices, self._inventory_preference)
+
+    @staticmethod
+    def _open_short_channel(candidate):
+        path = candidate.get("hidpp_short_path")
+        if not path or not HIDAPI_OK:
+            return None
+        handle = None
+        try:
+            if _HID_API_STYLE == "hidapi":
+                handle = _hid.device()
+                handle.open_path(path)
+            else:
+                handle = _HidDeviceCompat(path)
+            handle.set_nonblocking(False)
+            return handle
+        except Exception:
+            if handle is not None:
+                handle.close()
+            raise
+
+    def _close_short_channel(self):
+        handle, self._short_dev = self._short_dev, None
+        if handle is not None:
+            try:
+                handle.close()
+            except Exception:
+                pass
+
+    def _poll_inventory_changes(self):
+        if not self._inventory_enabled:
+            return
+        requested = self._inventory_refresh_requested.is_set()
+        if not requested and time.monotonic() - self._inventory_checked_at < 3:
+            return
+        self._inventory_checked_at = time.monotonic()
+        infos = self._vendor_hid_infos()
+        if requested or self._inventory_infos_signature(infos) != self._inventory_signature:
+            bound = self._inventory_target
+            selected = self._refresh_device_inventory(infos, live=True)
+            if bound:
+                self._binding_invalidated = not any(
+                    d.online and d.identity == bound.identity and d.slot == bound.slot
+                    and interface_group(d.candidate) == interface_group(bound.candidate)
+                    for d in self._inventory_devices)
+            if (selected is None or self._inventory_target is None
+                    or selected.identity != self._inventory_target.identity
+                    or selected.slot != self._inventory_target.slot
+                    or interface_group(selected.candidate) != interface_group(self._inventory_target.candidate)):
+                raise IOError("selected Logitech device changed or went offline")
+            if self._inventory_target.status in ("online", "limited"):
+                selected.status = self._inventory_target.status
+            self._inventory_target = selected
+
     def _try_connect(self):
         """Open the vendor HID collection, discover features, divert.
 
@@ -2848,7 +3042,13 @@ class HidGestureListener:
         back to the default direct-then-receiver scan with the same
         per-slot timeout. On divert success the working tuple is
         persisted so the next launch hits the warm path."""
+        self._binding_invalidated = False
         infos = self._vendor_hid_infos()
+        if self._inventory_enabled:
+            self._inventory_target = self._refresh_device_inventory(infos)
+            if self._inventory_target is None:
+                return False
+            infos = [dict(self._inventory_target.candidate)]
         if not infos:
             return False
 
@@ -3024,6 +3224,25 @@ class HidGestureListener:
             if self._dev is None:
                 continue
 
+            if self._inventory_enabled and self._inventory_target:
+                target = self._inventory_target
+                try:
+                    self._short_dev = self._open_short_channel(info)
+                    probe = IdentityProbe(self._dev, cancelled=self._stopping.is_set, short_handle=self._short_dev)
+                    paired = probe.pairing(target.slot, int(pid) == BOLT_RECEIVER_PID) if is_receiver(info) else None
+                    verified = probe.device(info, target.slot, paired)
+                    if verified is None or not verified.online or verified.identity != target.identity:
+                        raise OSError("selected slot identity changed before binding")
+                except Exception as exc:
+                    print(f"[HidGesture] Refusing unverified device selection: {exc}")
+                    self._dev.close()
+                    self._close_short_channel()
+                    self._dev = None
+                    target.online = False
+                    target.status = "communication_failed"
+                    return False
+                product = target.name or product
+
             # Narrow the device-index search based on transport:
             #  - BT candidates only use BT_DEV_IDX (0xFF)
             #  - Bolt receivers only use slots 1-6
@@ -3051,10 +3270,35 @@ class HidGestureListener:
                 )
             else:
                 idx_order = default_idx_order
+            if self._inventory_enabled and self._inventory_target:
+                idx_order = (self._inventory_target.slot,)
             reprog_found = False
             hidpp_name = None
             for idx in idx_order:
                 self._dev_idx = idx
+                hidpp_name = None
+                self._feat_idx = None
+                # Feature indexes are per slot, not per receiver.
+                self._dpi_idx = self._smart_shift_idx = self._battery_idx = None
+                self._battery_feature_id = None
+                self._haptic_idx = self._force_sensing_idx = None
+                self._smart_shift_enhanced = False
+                self._force_sensing_range = self._haptic_capabilities = None
+                self._wheel_feature_indexes = {}
+                self._hires_wheel_idx = self._thumbwheel_idx = None
+                self._hires_wheel_multiplier = self._thumbwheel_multiplier = None
+                self._hires_wheel_mode_initial = None
+                self._button_only_cids = set()
+                self._last_controls = []
+                self._rawxy_enabled = False
+                self._extra_divert_acks.clear()
+                self._extra_diverts = {cid: {**extra, "held": False}
+                                       for cid, extra in self._static_extra_diverts.items()}
+                device_spec = resolve_device(product_id=pid, product_name=product)
+                thumb_cid = getattr(device_spec, "thumb_button_cid", None)
+                if thumb_cid is not None:
+                    self._button_only_cids.add(int(thumb_cid))
+                self._gesture_candidates = list(getattr(device_spec, "gesture_cids", ()) or DEFAULT_GESTURE_CIDS)
                 fi = self._find_feature(FEAT_REPROG_V4, timeout_ms=400)
                 if fi is not None:
                     reprog_found = True
@@ -3211,19 +3455,28 @@ class HidGestureListener:
                             f"[HidGesture] THUMB_WHEEL @0x{tw_fi:02X} "
                             f"divertedRes={self._thumbwheel_multiplier}"
                         )
-                    if self._divert():
+                    divert_ok = self._divert()
+                    identity_verified = self._inventory_enabled and self._inventory_target is not None
+                    if divert_ok or identity_verified:
                         # Install BEFORE _divert_extras so it lands in the
                         # same setCidReporting round. Pass the live REPROG_V4
                         # controls so the helper can refuse to divert CIDs the
                         # firmware does not advertise.
-                        self._install_thumb_button_extra(device_spec, controls)
-                        self._divert_extras()
+                        if divert_ok:
+                            self._install_thumb_button_extra(device_spec, controls)
+                            self._divert_extras()
+                        else:
+                            self._gesture_candidates = []
+                            self._rawxy_enabled = False
                         if idx == BT_DEV_IDX:
                             actual_transport = "Bluetooth"
                         elif pid == BOLT_RECEIVER_PID:
                             actual_transport = "Logi Bolt"
                         else:
                             actual_transport = "USB Receiver"
+                        if self._inventory_enabled and self._inventory_target:
+                            actual_transport = self._inventory_target.transport
+                            self._inventory_target.status = "online" if divert_ok else "limited"
                         self._connected_device_info = build_connected_device_info(
                             product_id=pid,
                             product_name=hidpp_name or product,
@@ -3231,7 +3484,7 @@ class HidGestureListener:
                             source=source,
                             gesture_cids=self._gesture_candidates,
                             reprog_controls=controls,
-                            active_gesture_cid=self._gesture_cid,
+                            active_gesture_cid=self._gesture_cid if divert_ok else None,
                             gesture_rawxy_enabled=self._rawxy_enabled,
                             discovered_features=self._discovered_feature_inventory(),
                             device_identity={
@@ -3278,8 +3531,9 @@ class HidGestureListener:
                     continue     # divert failed -- try next receiver slot
             if not reprog_found:
                 if (
-                    device_spec is not None
-                    and not getattr(device_spec, "requires_reprog_controls", True)
+                    (device_spec is not None
+                     and not getattr(device_spec, "requires_reprog_controls", True))
+                    or (self._inventory_enabled and self._inventory_target is not None)
                 ):
                     if "bluetooth" in (opened_transport or "").lower():
                         actual_transport = "Bluetooth"
@@ -3288,9 +3542,20 @@ class HidGestureListener:
                     else:
                         actual_transport = "USB"
                     self._gesture_candidates = []
+                    target = self._inventory_target if self._inventory_enabled else None
+                    if target:
+                        actual_transport = target.transport
+                        target.status = "limited"
+                        if target.protocol == "hidpp2":
+                            self._dpi_idx = self._find_feature(FEAT_ADJ_DPI)
+                            self._battery_idx = self._find_feature(FEAT_UNIFIED_BATT)
+                            self._battery_feature_id = FEAT_UNIFIED_BATT if self._battery_idx else None
+                            if self._battery_idx is None:
+                                self._battery_idx = self._find_feature(FEAT_BATTERY_STATUS)
+                                self._battery_feature_id = FEAT_BATTERY_STATUS if self._battery_idx else None
                     self._connected_device_info = build_connected_device_info(
                         product_id=pid,
-                        product_name=product or device_spec.display_name,
+                        product_name=(target.name if target else None) or product or getattr(device_spec, "display_name", "Logitech mouse"),
                         transport=actual_transport,
                         source=source,
                         gesture_cids=(),
@@ -3327,7 +3592,7 @@ class HidGestureListener:
                         "[HidGesture] Accepting known OS-level Logitech device "
                         "without REPROG_V4 "
                         f"PID=0x{int(pid or 0):04X} "
-                        f"device={device_spec.display_name}"
+                        f"device={getattr(self._connected_device_info, 'display_name', 'Logitech mouse')}"
                     )
                     self._reprog_absent_until.pop(cand_key, None)
                     return True
@@ -3342,6 +3607,7 @@ class HidGestureListener:
                 )
 
             # Couldn't use this interface -- close and try next
+            self._close_short_channel()
             try:
                 self._dev.close()
             except Exception:
@@ -3354,7 +3620,7 @@ class HidGestureListener:
         """Sleep up to ``seconds`` in 0.1 s slices, returning early if the
         listener has been stopped so teardown stays responsive."""
         for _ in range(int(max(0.0, seconds) / 0.1)):
-            if not self._running:
+            if not self._running or (self._inventory_enabled and self._inventory_refresh_requested.is_set()):
                 return
             time.sleep(0.1)
 
@@ -3404,6 +3670,7 @@ class HidGestureListener:
                     if self._reconnect_requested:
                         self._reconnect_requested = False
                         raise IOError("reconnect requested")
+                    self._poll_inventory_changes()
 
                     if self._consecutive_request_timeouts >= _CONSECUTIVE_TIMEOUT_RECONNECT:
                         if not _device_asleep:
@@ -3414,6 +3681,9 @@ class HidGestureListener:
                             self._force_release_stale_holds()
                             self._drain_pending_requests()
                             self._consecutive_request_timeouts = 0
+                            if self._inventory_target:
+                                self._inventory_target.online = False
+                                self._inventory_target.status = "offline"
                             if self._connected:
                                 self._connected = False
                                 if self._on_disconnect:
@@ -3430,18 +3700,25 @@ class HidGestureListener:
                             raise IOError("sleep timeout — device may be gone")
                         self._drain_pending_requests()
                         raw = self._rx(1000)
-                        if raw:
+                        parsed = _parse(raw) if raw else None
+                        if (parsed and parsed[0] == self._dev_idx and parsed[3] == 0
+                                and parsed[1] not in (0x40, 0x41)):
                             _device_asleep = False
                             _device_sleep_time = None
                             _no_data_count = 0
                             self._consecutive_request_timeouts = 0
                             self._connected = True
+                            if self._inventory_target:
+                                self._inventory_target.online = True
+                                self._inventory_target.status = "online" if self._rawxy_enabled else "limited"
                             if self._on_connect:
                                 try:
                                     self._on_connect()
                                 except Exception:
                                     pass
                             print("[HidGesture] Device woke from sleep")
+                            self._on_report(raw)
+                        elif raw:
                             self._on_report(raw)
                         continue
 
@@ -3475,7 +3752,9 @@ class HidGestureListener:
                 print(f"[HidGesture] read error: {e}")
 
             # Cleanup before potential reconnect
-            self._undivert()
+            if not self._binding_invalidated:
+                self._undivert()
+            self._close_short_channel()
             try:
                 if self._dev:
                     self._dev.close()
@@ -3524,6 +3803,9 @@ class HidGestureListener:
             self._rawxy_enabled = False
             self._connected_device_info = None
             self._reconnect_requested = False
+            if self._inventory_target:
+                self._inventory_target.online = False
+                self._inventory_target.status = "offline"
             if self._connected:
                 self._connected = False
                 if self._on_disconnect:

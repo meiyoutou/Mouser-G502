@@ -16,6 +16,7 @@ Item {
                                              || deleteDialog.visible
                                              || keyCaptureDialog.visible
     property string pendingDeleteProfile: ""
+    property bool diagnosticsExpanded: false
     // Reactive i18n shortcut — all s["key"] bindings update on lm.languageChanged
     property var s: lm.strings
 
@@ -538,8 +539,10 @@ Item {
     function currentLayoutChoiceLabel() {
         var idx = manualLayoutChoiceIndex(backend.deviceLayoutOverrideKey)
         var choices = backend.manualLayoutChoices
-        if (idx >= 0 && idx < choices.length)
-            return choices[idx].label
+        if (idx >= 0 && idx < choices.length) {
+            var label = choices[idx].label
+            return label === "Auto-detect" ? (s["mouse.auto_detect"] || label) : label
+        }
         return s["mouse.auto_detect"] || "Auto-detect"
     }
 
@@ -812,65 +815,105 @@ Item {
 
                     // ── Header ────────────────────────────────
                     Item {
-                        width: parent.width; height: 70
+                        objectName: "mouseDeviceHeader"
+                        width: parent.width; height: deviceHeaderColumn.implicitHeight + 32
 
-                        Row {
+                        Column {
+                            id: deviceHeaderColumn
                             anchors {
-                                left: parent.left; leftMargin: 28
-                                verticalCenter: parent.verticalCenter
-                            }
-                            spacing: 12
-
-                            Column {
-                                spacing: 3
-                                anchors.verticalCenter: parent.verticalCenter
-
-                                Row {
-                                    spacing: 8
-
-                                    Text {
-                                        text: backend.deviceDisplayName
-                                        font { family: uiState.fontFamily; pixelSize: 20; bold: true }
-                                        color: theme.textPrimary
-                                    }
-
-                                    // Profile badge
-                                    Rectangle {
-                                        visible: selectedProfileLabel !== ""
-                                        width: profBadgeText.implicitWidth + 16
-                                        height: 22; radius: 11
-                                        color: Qt.rgba(0, 0.83, 0.67, 0.12)
-                                        anchors.verticalCenter: parent.verticalCenter
-
-                                        Text {
-                                            id: profBadgeText
-                                            anchors.centerIn: parent
-                                            text: selectedProfileLabel
-                                            font { family: uiState.fontFamily; pixelSize: 11 }
-                                            color: theme.accent
-                                        }
-                                    }
-                                }
-
-                                Text {
-                                    text: !backend.mouseConnected
-                                          ? s["mouse.turn_on_mouse"]
-                                          : backend.hasInteractiveDeviceLayout
-                                            ? s["mouse.click_dot"]
-                                            : s["mouse.choose_layout"]
-                                    font { family: uiState.fontFamily; pixelSize: 12 }
-                                    color: theme.textSecondary
-                                }
-                            }
-                        }
-
-                        // Right-side status row: delete button + battery + connection
-                        Row {
-                            anchors {
-                                right: parent.right; rightMargin: 28
-                                verticalCenter: parent.verticalCenter
+                                left: parent.left; right: parent.right; margins: 28
+                                top: parent.top; topMargin: 16
                             }
                             spacing: 8
+
+                            RowLayout {
+                                width: parent.width
+                                spacing: 8
+                                ComboBox {
+                                    id: deviceSelector
+                                    objectName: "logitechDeviceSelector"
+                                    visible: backend.deviceDiscoverySupported
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredHeight: 40
+                                    model: backend.logitechDeviceChoices
+                                    textRole: "label"
+                                    displayText: backend.managedLogitechDeviceLabel
+                                    enabled: !backend.deviceInventoryBusy
+                                    font { family: uiState.fontFamily; pixelSize: 16; bold: true }
+                                    Accessible.name: s["mouse.device_selector"] || "Managed Logitech mouse"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 450
+                                    ToolTip.text: backend.managedLogitechDeviceLabel
+                                    currentIndex: {
+                                        var choices = backend.logitechDeviceChoices
+                                        for (var i = 0; i < choices.length; ++i)
+                                            if (choices[i].identity === backend.preferredLogitechDeviceId) return i
+                                        return 0
+                                    }
+                                    delegate: ItemDelegate {
+                                        width: deviceSelector.width
+                                        highlighted: deviceSelector.highlightedIndex === index
+                                        font { family: uiState.fontFamily; pixelSize: 11 }
+                                        contentItem: Text {
+                                            text: modelData ? modelData.label : ""
+                                            color: highlighted ? theme.accent : theme.textPrimary
+                                            font: parent.font
+                                            wrapMode: Text.WordWrap
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    onActivated: {
+                                        var choices = backend.logitechDeviceChoices
+                                        if (index >= 0 && index < choices.length)
+                                            backend.selectLogitechDevice(choices[index].identity)
+                                    }
+                                }
+                                Text {
+                                    visible: !backend.deviceDiscoverySupported
+                                    Layout.fillWidth: true
+                                    text: backend.deviceDisplayName
+                                    elide: Text.ElideRight
+                                    font { family: uiState.fontFamily; pixelSize: 20; bold: true }
+                                    color: theme.textPrimary
+                                }
+                                Button {
+                                    objectName: "logitechDeviceRescan"
+                                    visible: backend.deviceDiscoverySupported
+                                    Layout.preferredHeight: 40
+                                    text: s["mouse.device_rescan"] || "Rescan"
+                                    font { family: uiState.fontFamily; pixelSize: 11 }
+                                    enabled: !backend.deviceInventoryBusy
+                                    onClicked: backend.refreshLogitechDevices()
+                                }
+                                Button {
+                                    id: deviceAdvancedButton
+                                    objectName: "mouseDeviceAdvancedButton"
+                                    Layout.preferredHeight: 40
+                                    text: s["mouse.device_advanced"] || "Advanced"
+                                    font { family: uiState.fontFamily; pixelSize: 11 }
+                                    onClicked: deviceAdvancedPopup.open()
+                                }
+                            }
+
+                        // Wrap badges rather than overlap the device title on narrow windows.
+                        Flow {
+                            width: parent.width
+                            height: childrenRect.height
+                            spacing: 8
+                            Rectangle {
+                                visible: selectedProfileLabel !== ""
+                                width: profBadgeText.implicitWidth + 16
+                                height: 24; radius: 12
+                                color: Qt.rgba(0, 0.83, 0.67, 0.12)
+                                Text {
+                                    id: profBadgeText
+                                    anchors.centerIn: parent
+                                    text: selectedProfileLabel
+                                    font { family: uiState.fontFamily; pixelSize: 11 }
+                                    color: theme.accent
+                                }
+                            }
 
                             // Delete profile button (not for default)
                             Rectangle {
@@ -881,7 +924,6 @@ Item {
                                 radius: 10
                                 color: delMa.containsMouse ? theme.danger : theme.dangerBg
                                 Behavior on color { ColorAnimation { duration: 120 } }
-                                anchors.verticalCenter: parent.verticalCenter
 
                                 Row {
                                     id: delRow
@@ -921,7 +963,6 @@ Item {
                                 visible: backend.batteryLevel >= 0
                                 width: battRow.implicitWidth + 16
                                 height: 24; radius: 12
-                                anchors.verticalCenter: parent.verticalCenter
                                 opacity: backend.batteryStale ? 0.72 : 1.0
                                 color: {
                                     var lvl = backend.batteryLevel
@@ -977,7 +1018,6 @@ Item {
                                 id: connectionBadge
                                 width: statusRow.implicitWidth + 16
                                 height: 24; radius: 12
-                                anchors.verticalCenter: parent.verticalCenter
                                 color: backend.mouseConnected
                                        ? Qt.rgba(0, 0.83, 0.67, 0.12)
                                        : Qt.rgba(0.9, 0.3, 0.3, 0.15)
@@ -1020,70 +1060,16 @@ Item {
                                 }
                             }
 
-                            // Layout picker pill
-                            Rectangle {
-                                visible: backend.mouseConnected
-                                width: layoutPillRow.implicitWidth + 16
-                                height: 24; radius: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                color: layoutPillMa.containsMouse
-                                       ? Qt.rgba(0.5, 0.5, 0.5, 0.18)
-                                       : (backend.deviceLayoutOverrideKey !== ""
-                                          ? Qt.rgba(0.95, 0.7, 0.2, 0.18)
-                                          : Qt.rgba(0.5, 0.5, 0.5, 0.10))
-
-                                Row {
-                                    id: layoutPillRow
-                                    anchors.centerIn: parent
-                                    spacing: 4
-
-                                    Text {
-                                        text: {
-                                            if (backend.deviceLayoutOverrideKey !== "")
-                                                return currentLayoutChoiceLabel()
-                                            return backend.deviceDisplayName || "Auto"
-                                        }
-                                        font { family: uiState.fontFamily; pixelSize: 10 }
-                                        color: backend.deviceLayoutOverrideKey !== ""
-                                               ? "#d4a017" : theme.textSecondary
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                    Text {
-                                        text: "\u25BE"
-                                        font.pixelSize: 9
-                                        color: theme.textSecondary
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: layoutPillMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: layoutMenu.open()
-                                }
-
-                                Menu {
-                                    id: layoutMenu
-                                    y: parent.height + 4
-
-                                    Repeater {
-                                        model: backend.manualLayoutChoices
-                                        MenuItem {
-                                            text: {
-                                                var lbl = modelData.label || ""
-                                                return lbl === "Auto-detect"
-                                                       ? (s["mouse.auto_detect"] || lbl)
-                                                       : lbl
-                                            }
-                                            font { family: uiState.fontFamily; pixelSize: 11 }
-                                            highlighted: modelData.key === backend.deviceLayoutOverrideKey
-                                                         || (modelData.key === "" && backend.deviceLayoutOverrideKey === "")
-                                            onTriggered: backend.setDeviceLayoutOverride(modelData.key)
-                                        }
-                                    }
-                                }
+                        }
+                            Text {
+                                objectName: "mouseDeviceHint"
+                                width: parent.width
+                                text: !backend.mouseConnected
+                                      ? (backend.deviceDiscoverySupported ? backend.deviceDiscoveryMessage : s["mouse.turn_on_mouse"])
+                                      : backend.hasInteractiveDeviceLayout ? s["mouse.click_dot"] : s["mouse.choose_layout"]
+                                wrapMode: Text.WordWrap
+                                font { family: uiState.fontFamily; pixelSize: 12 }
+                                color: theme.textSecondary
                             }
                         }
                     }
@@ -1092,6 +1078,92 @@ Item {
                         width: parent.width - 56; height: 1
                         color: theme.border
                         anchors.horizontalCenter: parent.horizontalCenter
+                    }
+
+                    Popup {
+                        id: deviceAdvancedPopup
+                        objectName: "mouseDeviceAdvancedPopup"
+                        parent: Overlay.overlay
+                        width: Math.min(420, mousePage.width - 32)
+                        // Map only after layout has settled. A binding cannot track
+                        // ancestor movement inside mapToItem(), so it can retain
+                        // the button's pre-layout position near the window edge.
+                        function positionNearButton() {
+                            if (!parent)
+                                return
+                            var anchor = deviceAdvancedButton.mapToItem(parent,
+                                deviceAdvancedButton.width, deviceAdvancedButton.height)
+                            x = Math.max(16, Math.min(parent.width - width - 16, anchor.x - width))
+                            y = Math.max(16, Math.min(parent.height - height - 16, anchor.y))
+                        }
+                        onAboutToShow: positionNearButton()
+                        Connections {
+                            target: deviceAdvancedPopup.parent
+                            function onWidthChanged() {
+                                if (deviceAdvancedPopup.visible)
+                                    Qt.callLater(deviceAdvancedPopup.positionNearButton)
+                            }
+                            function onHeightChanged() {
+                                if (deviceAdvancedPopup.visible)
+                                    Qt.callLater(deviceAdvancedPopup.positionNearButton)
+                            }
+                        }
+                        padding: 16
+                        focus: true
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        background: Rectangle {
+                            color: theme.bgCard
+                            radius: 12
+                            border.width: 1
+                            border.color: theme.border
+                        }
+                        contentItem: Column {
+                            spacing: 10
+                            Text {
+                                text: s["mouse.device_manual_layout"] || "Manual button layout"
+                                color: theme.textPrimary
+                                font { family: uiState.fontFamily; pixelSize: 12; bold: true }
+                            }
+                            Text {
+                                width: parent.width
+                                text: s["mouse.device_layout_help"] || "The diagram follows the managed mouse automatically."
+                                wrapMode: Text.WordWrap
+                                color: theme.textSecondary
+                                font { family: uiState.fontFamily; pixelSize: 11 }
+                            }
+                            ComboBox {
+                                objectName: "mouseManualLayoutSelector"
+                                width: parent.width
+                                model: backend.manualLayoutChoices
+                                textRole: "label"
+                                displayText: currentLayoutChoiceLabel()
+                                delegate: layoutComboDelegate
+                                font { family: uiState.fontFamily; pixelSize: 11 }
+                                enabled: backend.mouseConnected
+                                currentIndex: manualLayoutChoiceIndex(backend.deviceLayoutOverrideKey)
+                                onActivated: {
+                                    var choices = backend.manualLayoutChoices
+                                    if (index >= 0 && index < choices.length)
+                                        backend.setDeviceLayoutOverride(choices[index].key)
+                                }
+                            }
+                            Text {
+                                visible: backend.deviceDiscoverySupported
+                                width: parent.width
+                                text: backend.deviceDiscoveryMessage
+                                wrapMode: Text.WordWrap
+                                color: theme.textSecondary
+                                font { family: uiState.fontFamily; pixelSize: 11 }
+                            }
+                            Text {
+                                visible: backend.deviceDiscoverySupported
+                                width: parent.width
+                                text: s["mouse.device_scope"] || "Manage one selected mouse. Ordinary shortcuts remain shared."
+                                wrapMode: Text.WordWrap
+                                color: theme.textDim
+                                font { family: uiState.fontFamily; pixelSize: 10 }
+                            }
+                        }
                     }
 
                     // ── Mouse image with hotspots ─────────────
@@ -2460,12 +2532,12 @@ Item {
                     Rectangle {
                         width: parent.width - 56
                         anchors.horizontalCenter: parent.horizontalCenter
-                        height: debugCol.implicitHeight + 24
+                        height: debugCol.implicitHeight + 32
                         radius: 14
                         color: theme.bgCard
                         border.width: 1
                         border.color: theme.border
-                        visible: backend.debugMode
+                        visible: true
 
                         Column {
                             id: debugCol
@@ -2474,6 +2546,28 @@ Item {
                             spacing: 12
 
                             RowLayout {
+                                width: parent.width
+                                Label {
+                                    text: s["mouse.diagnostics_title"]
+                                    color: theme.textPrimary
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
+                                Button {
+                                    text: s["mouse.copy_diagnostics"]
+                                    onClicked: backend.copyDiagnosticInfo()
+                                }
+                                Button {
+                                    objectName: "diagnosticsExpandButton"
+                                    text: mousePage.diagnosticsExpanded ? s["mouse.diagnostics_collapse"] : s["mouse.diagnostics_expand"]
+                                    onClicked: mousePage.diagnosticsExpanded = !mousePage.diagnosticsExpanded
+                                }
+                            }
+
+                            RowLayout {
+                                id: diagnosticControls
+                                visible: mousePage.diagnosticsExpanded
                                 width: parent.width
                                 spacing: 12
 
@@ -2498,7 +2592,10 @@ Item {
                                     checked: backend.debugEventsEnabled
                                     text: checked ? s["mouse.on"] : s["mouse.off"]
                                     Material.accent: theme.accent
-                                    onToggled: backend.setDebugEventsEnabled(checked)
+                                    onToggled: {
+                                        if (checked && !backend.debugMode) backend.setDebugMode(true)
+                                        backend.setDebugEventsEnabled(checked)
+                                    }
                                 }
 
                                 Switch {
@@ -2631,6 +2728,7 @@ Item {
                                 border.width: 1
                                 border.color: theme.border
                                 height: monitorCol.implicitHeight + 20
+                                visible: mousePage.diagnosticsExpanded
 
                                 Column {
                                     id: monitorCol
@@ -2683,7 +2781,7 @@ Item {
                                     }
 
                                     Text {
-                                        text: "Source: "
+                                        text: s["mouse.monitor_source"] + ": "
                                               + (backend.gestureMoveSource ? backend.gestureMoveSource : "n/a")
                                               + " | dx: " + backend.gestureMoveDx
                                               + " | dy: " + backend.gestureMoveDy
@@ -2703,6 +2801,7 @@ Item {
                             Rectangle {
                                 width: parent.width
                                 height: 160
+                                visible: mousePage.diagnosticsExpanded
                                 radius: 10
                                 color: Qt.rgba(0, 0, 0, 0.18)
                                 border.width: 1
@@ -2739,6 +2838,7 @@ Item {
                             Rectangle {
                                 width: parent.width
                                 height: 180
+                                visible: mousePage.diagnosticsExpanded
                                 radius: 10
                                 color: Qt.rgba(0, 0, 0, 0.18)
                                 border.width: 1

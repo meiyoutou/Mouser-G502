@@ -10,6 +10,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+build-modular-*/
+dist-modular-*/
+build-speech-*/
+dist-speech-*/
+# Downloaded model binaries belong in optional Release assets, not Git source.
+speech_models/*
+!speech_models/NOTICE.md
 *.egg
 
 # Local build/test logs and scraped reference pages

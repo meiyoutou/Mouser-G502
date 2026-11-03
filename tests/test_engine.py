@@ -6,6 +6,16 @@ from unittest.mock import Mock, patch
 from core.config import DEFAULT_CONFIG
 from core.mouse_hook import MouseEvent
 from core.mouse_hook_types import HidRuntimeState
+from tests.config_sandbox import config_sandbox
+
+
+def setUpModule():
+    global _config_sandbox
+    _config_sandbox = config_sandbox()
+
+
+def tearDownModule():
+    _config_sandbox.close()
 
 
 class _FakeMouseHook:
@@ -565,7 +575,8 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
             read_smart_shift=Mock(return_value={"mode": "ratchet", "enabled": False, "threshold": 25}),
         )
 
-        engine._battery_poll_loop(stop_event)
+        with patch("core.engine._system_idle_seconds", return_value=0):
+            engine._battery_poll_loop(stop_event)
 
         engine.hook._hid_gesture.read_battery.assert_called_once_with()
         engine.hook._hid_gesture.read_smart_shift.assert_not_called()

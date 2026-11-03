@@ -266,15 +266,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "${{ env.RELEASE_TAG }}" --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            # Release already exists — just upload the assets
-            gh release upload "${{ env.RELEASE_TAG }}" \
-              --repo "${{ github.repository }}" \
-              --clobber \
-              Mouser-Windows/Mouser-Windows.zip \
-              Mouser-macOS/Mouser-macOS.zip \
-              Mouser-macOS-intel/Mouser-macOS-intel.zip \
-              Mouser-Linux/Mouser-Linux.zip \
-              mouser-${{ env.RELEASE_TAG }}-update.json
+            # A manually verified release (including its draft) must not be
+            # overwritten by a tag-triggered or rerun build. Keep published
+            # archives and their checksum manifests paired and immutable.
+            echo "Release already exists; preserving its verified assets."
           else
             # Checked-in notes win over auto-generated ones; a workflow_dispatch
             # run also creates the tag here (--target), since tag pushes are

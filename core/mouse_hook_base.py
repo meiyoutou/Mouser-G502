@@ -99,6 +99,7 @@ class BaseMouseHook:
         self._connected_device = None
         self._dispatch_queue = None
         self._hid_listener_lock = threading.RLock()
+        self._preferred_logi_device = {}
 
     def _init_dispatch_queue(self, maxsize=0):
         """Initialize dispatch queue storage for subclasses with event threads."""
@@ -497,6 +498,9 @@ class BaseMouseHook:
                 on_battery=self._on_hid_battery,
             )
             self._hid_gesture = listener
+            configure_selection = getattr(listener, "configure_device_selection", None)
+            if callable(configure_selection):
+                configure_selection(self._preferred_logi_device)
             if not listener.start():
                 self._hid_gesture = None
             elif hasattr(listener, "set_thumb_rawxy_enabled"):

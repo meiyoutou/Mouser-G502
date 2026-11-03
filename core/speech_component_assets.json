@@ -1,0 +1,31 @@
+{
+  "protocol": 1,
+  "release_tag": "speech-components-v1-win64",
+  "assets": {
+    "runtime": {
+      "name": "Mouser-speech-runtime-v1-win64.zip",
+      "size": 113532890,
+      "expanded_size": 291694696,
+      "sha256": "6dd66424807ca0a3f3adb07af6e9ebe9237530fd6853fef3b8ad6dd4cf128406",
+      "exe_sha256": "c2b02fd6a268ff1ada9449a2fa1daba0cbb4240b0a0c726200f03110cdd3c03a"
+    },
+    "sensevoice": {
+      "name": "Mouser-model-sensevoice-v1.zip",
+      "size": 160818365,
+      "expanded_size": 240208704,
+      "sha256": "ba394c60eb1a1887983cd746eba2e150834305c146f6b62423be0b8ee58fe132"
+    },
+    "zipformer": {
+      "name": "Mouser-model-zipformer-v1.zip",
+      "size": 21459779,
+      "expanded_size": 26014015,
+      "sha256": "fb8c66af9b85f2921f93feaa7f4621fb9fc78371fc59a25eb1b0c33220e4ed9b"
+    },
+    "whisper-small": {
+      "name": "Mouser-model-whisper-small-v1.zip",
+      "size": 446970168,
+      "expanded_size": 486871592,
+      "sha256": "5f14e1ac00979a889f4eaee000cf530190dc827b3664118b6361c0ca9d06233c"
+    }
+  }
+}

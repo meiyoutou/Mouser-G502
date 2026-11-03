@@ -11,11 +11,52 @@ import shutil
 import json
 import subprocess
 import PySide6
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 ROOT = os.path.abspath(".")
+DIST_ROOT = os.path.abspath(globals().get("DISTPATH", "dist"))
+sys.path.insert(0, ROOT)
 PYSIDE6_DIR = os.path.dirname(PySide6.__file__)
-BUILD_INFO_PATH = os.path.join(ROOT, "build", "mouser_build_info.json")
+SPEECH_MODELS_DIR = os.path.join(ROOT, "speech_models")
+EDITION = os.environ.get("MOUSER_EDITION", "lite").strip().lower()
+if EDITION not in {"lite", "voice"}:
+    raise ValueError("MOUSER_EDITION must be lite or voice")
+SPEECH_ENABLED = EDITION == "voice"
+EDITION_BUILD_DIR = os.path.join(ROOT, "build", "optional-" + EDITION)
+BUILD_INFO_PATH = os.path.join(EDITION_BUILD_DIR, "mouser_build_info.json")
+MODEL_SELECTION = os.environ.get("MOUSER_BUNDLE_MODELS", "none").strip().lower()
+if MODEL_SELECTION not in {"none", "all", "sensevoice", "zipformer", "whisper-small"}:
+    raise ValueError("Unknown MOUSER_BUNDLE_MODELS selection")
+if not SPEECH_ENABLED and MODEL_SELECTION != "none":
+    raise ValueError("Lite edition must not bundle speech models")
+SPEECH_EXCLUDES = [] if SPEECH_ENABLED else [
+    "numpy", "sounddevice", "_sounddevice", "_sounddevice_data", "sherpa_onnx",
+    "sherpa_onnx_core", "soxr", "faster_whisper",
+    "ctranslate2", "tokenizers", "huggingface_hub", "av", "onnxruntime",
+    "torch", "transformers", "scipy", "sympy", "numba",
+]
+
+
+def _collect_optional_speech_runtime():
+    """Collect native/runtime files for optional local speech-to-text support."""
+    binaries = []
+    datas = []
+    # Read-only accessibility anchors belong to the main app, not ASR.
+    datas += collect_data_files("uiautomation", include_py_files=False)
+    if not SPEECH_ENABLED:
+        return binaries, datas
+    for package in ("sounddevice", "ctranslate2", "tokenizers", "sherpa_onnx", "soxr", "uiautomation"):
+        try:
+            binaries += collect_dynamic_libs(package)
+        except Exception:
+            pass
+    for package in ("faster_whisper", "ctranslate2", "huggingface_hub", "tokenizers", "sherpa_onnx", "uiautomation"):
+        try:
+            datas += collect_data_files(package, include_py_files=False)
+        except Exception:
+            pass
+    return binaries, datas
 
 
 def _load_app_version() -> str:
@@ -70,6 +111,7 @@ def _write_build_info(version: str) -> str:
                 "version": version,
                 "commit": commit,
                 "dirty": dirty,
+                "edition": EDITION,
             },
             build_info_file,
         )
@@ -78,24 +120,51 @@ def _write_build_info(version: str) -> str:
 
 APP_VERSION = _load_app_version()
 BUILD_INFO_DATA = _write_build_info(APP_VERSION)
+SPEECH_BINARIES, SPEECH_DATAS = _collect_optional_speech_runtime()
+SPEECH_RUNTIME_MARKER = os.path.join(EDITION_BUILD_DIR, "speech-runtime.json")
+with open(SPEECH_RUNTIME_MARKER, "w", encoding="utf-8") as marker:
+    json.dump({"enabled": SPEECH_ENABLED, "edition": EDITION}, marker)
+SPEECH_DATAS.append((SPEECH_RUNTIME_MARKER, "."))
+if MODEL_SELECTION != "none":
+    from core.speech_models import CATALOG, pack_paths
+    selected = list(CATALOG) if MODEL_SELECTION == "all" else [MODEL_SELECTION]
+    paths = set(name for pack_id in selected for name in pack_paths(pack_id))
+    for name in sorted(paths | {"NOTICE.md"}):
+        SPEECH_DATAS.append((os.path.join(SPEECH_MODELS_DIR, name),
+                             os.path.join("speech_models", os.path.dirname(name))))
 
 a = Analysis(
     ["main_qml.py"],
     pathex=[ROOT],
-    binaries=[],
+    binaries=SPEECH_BINARIES,
     datas=[
         # QML UI files
         (os.path.join(ROOT, "ui", "qml"), os.path.join("ui", "qml")),
         # Image assets
         (os.path.join(ROOT, "images"), "images"),
         (BUILD_INFO_DATA, "."),
-    ],
+        (os.path.join(ROOT, "core", "speech_component_assets.json"), "core"),
+    ] + SPEECH_DATAS,
     hiddenimports=[
         # conditional / lazy imports PyInstaller may miss
         "hid",
+        "numpy",
+        "sounddevice",
+        "sherpa_onnx",
+        "soxr",
+        "uiautomation",
+        "comtypes.gen.UIAutomationClient",
+        "faster_whisper",
+        "ctranslate2",
+        "tokenizers",
+        "huggingface_hub",
         "logging.handlers",
         "ctypes.wintypes",
         "ui.locale_manager",
+        "ui.speech_locale",
+        "core.speech_anchor",
+        "core.speech_session",
+        "core.speech_runtime_check",
         # PySide6 QML runtime
         "PySide6.QtWidgets",
         "PySide6.QtQuick",
@@ -109,6 +178,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        *SPEECH_EXCLUDES,
         # ── Aggressively trim unneeded PySide6 modules ──
         "PySide6.QtWebEngine",
         "PySide6.QtWebEngineCore",
@@ -270,7 +340,7 @@ coll = COLLECT(
 # PyInstaller's hooks copy the entire PySide6 QML tree; we only need
 # QtQuick/Controls + Material, QtQml, QtQuick/Layouts, QtQuick/Templates,
 # QtQuick/Window.  Everything else is dead weight that slows startup.
-_dist = os.path.join("dist", "Mouser", "_internal", "PySide6")
+_dist = os.path.join(DIST_ROOT, "Mouser", "_internal", "PySide6")
 
 # QML dirs to KEEP (everything else under qml/ is deleted)
 _keep_qml = {
@@ -326,8 +396,8 @@ def _cleanup():
 
 def _ensure_pyside6_adjacent_shiboken():
     """Keep shiboken6.abi3.dll next to pyside6.abi3.dll for Windows loader compatibility."""
-    py_side_dir = os.path.join("dist", "Mouser", "_internal", "PySide6")
-    shiboken_dir = os.path.join("dist", "Mouser", "_internal", "shiboken6")
+    py_side_dir = os.path.join(DIST_ROOT, "Mouser", "_internal", "PySide6")
+    shiboken_dir = os.path.join(DIST_ROOT, "Mouser", "_internal", "shiboken6")
     src = os.path.join(shiboken_dir, "shiboken6.abi3.dll")
     dst = os.path.join(py_side_dir, "shiboken6.abi3.dll")
     if not os.path.isfile(src) or not os.path.isdir(py_side_dir):

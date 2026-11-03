@@ -250,6 +250,13 @@ class Backend(QObject):
     # ── Signals ────────────────────────────────────────────────
     mappingsChanged = Signal()
     settingsChanged = Signal()
+    speechSettingsChanged = Signal()
+    speechPendingChanged = Signal()
+    speechLevelChanged = Signal()
+    _speechPackPhase = Signal(str, str)
+    _speechMicrophonesFinished = Signal(object)
+    _speechPackProgress = Signal(int)
+    _speechPackFinished = Signal(object)
     profilesChanged = Signal()
     activeProfileChanged = Signal()
     statusMessage = Signal(str)
@@ -265,6 +272,7 @@ class Backend(QObject):
     gestureStateChanged = Signal()
     gestureRecordsChanged = Signal()
     deviceInfoChanged = Signal()
+    deviceInventoryChanged = Signal()
     deviceLayoutChanged = Signal()
     hapticChanged = Signal()
     forceSensingChanged = Signal()
@@ -306,6 +314,7 @@ class Backend(QObject):
         self._device_dpi_max = DEFAULT_DPI_MAX
         self._connected_device_source = ""
         self._connected_device_transport = ""
+        self._device_inventory_snapshot = {"devices": [], "receivers": [], "status": "idle", "selected": ""}
         self._battery_level = -1
         self._battery_charging = False
         self._battery_updated_at = None
@@ -351,6 +360,18 @@ class Backend(QObject):
         self._battery_age_timer = QTimer(self)
         self._battery_age_timer.setInterval(60 * 1000)
         self._battery_age_timer.timeout.connect(self._emitBatteryAgeTick)
+        self._device_inventory_timer = QTimer(self)
+        self._device_inventory_timer.setInterval(500)
+        self._device_inventory_timer.timeout.connect(self._refreshDeviceInventorySnapshot)
+        if engine and sys.platform.startswith("win"):
+            self._device_inventory_timer.start()
+        self.settingsChanged.connect(self.deviceInventoryChanged.emit)
+        self.settingsChanged.connect(self.deviceInfoChanged.emit)
+        self.settingsChanged.connect(self.speechSettingsChanged.emit)
+        self._speechPackProgress.connect(self._updateSpeechPackProgress, Qt.QueuedConnection)
+        self._speechPackFinished.connect(self._finishSpeechPackInstall, Qt.QueuedConnection)
+        self._speechPackPhase.connect(self._updateSpeechInstallPhase, Qt.QueuedConnection)
+        self._speechMicrophonesFinished.connect(self._finishSpeechMicrophones, Qt.QueuedConnection)
 
         # Lazily-computed list snapshots for QML bindings. Every read of a
         # ``@Property(list, ...)`` returns the cached value until the
@@ -490,6 +511,335 @@ class Backend(QObject):
 
     def _emit_status_key(self, key, default=None, **values):
         self.statusMessage.emit(self._tr(key, default, **values))
+
+    def speech_to_text_settings(self):
+        """Return speech-to-text settings with the active UI language attached."""
+        settings = dict(
+            self._cfg.get("settings", {}).get("speech_to_text", {}) or {}
+        )
+        settings["ui_language"] = self._language()
+        settings["models_installing"] = self.speechModelInstalling
+        return settings
+
+    @Property("QVariantMap", notify=speechSettingsChanged)
+    def speechSettings(self):
+        from core.speech_session import SPEECH_DEFAULTS
+        return {**SPEECH_DEFAULTS, **self.speech_to_text_settings()}
+
+    @Property("QVariantMap", notify=speechSettingsChanged)
+    def speechRuntime(self):
+        from ui.speech_to_text import describe_runtime
+        return describe_runtime(self.speech_to_text_settings())
+
+    @Property(list, notify=speechSettingsChanged)
+    def speechModels(self):
+        from core.speech_models import catalog_status
+        from core.speech_components import assets_catalog
+        items = catalog_status()
+        installed = {item["id"]: item["installed"] and item["vad_installed"] for item in items}
+        try:
+            assets = assets_catalog()
+        except ValueError:
+            assets = {}
+        result = []
+        for item in items:
+            needed = (["runtime"] if not self.speechRuntime["enabled"] else [])
+            if not installed[item["id"]]:
+                needed.append(item["id"])
+            if self.speechSettings["preview_enabled"] and item["id"] != "zipformer" and not installed.get("zipformer"):
+                needed.append("zipformer")
+            size = self._tr("speech.model_size", size=round(item["bytes"] / (1024 * 1024)))
+            if assets:
+                size += " · " + self._tr("speech.download_size", size=round(sum(assets[key]["size"] for key in needed) / (1024 * 1024)))
+            result.append({**item, "note": self._tr(item["note"]), "size": size})
+        return result
+
+    @Property(bool, notify=speechSettingsChanged)
+    def speechModelInstalling(self):
+        return getattr(self, "_speech_model_installing", False)
+
+    @Property(int, notify=speechSettingsChanged)
+    def speechModelInstallProgress(self):
+        return getattr(self, "_speech_model_install_progress", 0)
+
+    @Property(str, notify=speechSettingsChanged)
+    def speechInstallMessage(self):
+        from core.speech_models import CATALOG
+        phase, item = getattr(self, "_speech_install_phase", ("idle", ""))
+        name = self._tr("speech.component") if item == "runtime" else CATALOG.get(item, {}).get("name", "")
+        return self._tr("speech.phase_" + phase, name=name)
+
+    @Property(bool, constant=True)
+    def speechDownloadSupported(self):
+        import platform
+        return sys.platform == "win32" and platform.machine().lower() in {"amd64", "x86_64"}
+
+    @Slot(str, str)
+    def _updateSpeechInstallPhase(self, phase, item):
+        self._speech_install_phase = (phase, item)
+        self.speechSettingsChanged.emit()
+
+    @Slot(str, bool)
+    def downloadSpeechModel(self, pack_id, with_preview):
+        from core.speech_models import CATALOG
+        if pack_id not in CATALOG or self.speechModelInstalling:
+            return
+        if self.speechBusy:
+            self._emit_status_key("speech.stop_before_install", "Stop recording before installing model files.")
+            return
+        self._speech_model_installing = True
+        self._speech_model_install_progress = 0
+        self._speech_install_phase = ("download", "runtime")
+        self._speech_install_cancel = threading.Event()
+        self.speechSettingsChanged.emit()
+        def install():
+            from core.speech_components import install_selection
+            try:
+                install_selection(pack_id, bool(with_preview), cancel_event=self._speech_install_cancel,
+                    progress=self._speechPackProgress.emit, phase=self._speechPackPhase.emit)
+                result = {"ok": True, "selection": pack_id}
+            except Exception as error:
+                result = {"ok": False, "error": str(error), "code": getattr(error, "code", str(error))}
+            self._speechPackFinished.emit(result)
+        threading.Thread(target=install, name="MouserSpeechDownload", daemon=True).start()
+
+    @Slot()
+    def cancelSpeechDownload(self):
+        cancel = getattr(self, "_speech_install_cancel", None)
+        if self.speechModelInstalling and cancel is not None:
+            cancel.set()
+            self._speech_install_phase = ("cancelling", "")
+            self.speechSettingsChanged.emit()
+
+    @Slot(int)
+    def _updateSpeechPackProgress(self, value):
+        if value == self.speechModelInstallProgress:
+            return
+        self._speech_model_install_progress = value
+        self.speechSettingsChanged.emit()
+
+    @Slot(object)
+    def _finishSpeechPackInstall(self, result):
+        self._speech_model_installing = False
+        self._speech_install_phase = ("done" if result.get("ok") else "failed", "")
+        self.speechSettingsChanged.emit()
+        if result.get("ok"):
+            if result.get("selection"):
+                self.useSpeechModel(result["selection"])
+                self.refreshSpeechMicrophones()
+            self._emit_status_key("speech.install_done", "Model installed. Existing shortcuts and model choices were not changed.")
+        else:
+            code = result.get("code", "")
+            if code == "cancelled":
+                self._speech_install_phase = ("cancelled", "")
+                self._emit_status_key("speech.phase_cancelled")
+            else:
+                known = {"network", "checksum", "size", "disk", "platform", "catalog", "url", "archive", "busy"}
+                error = self._tr("speech.error_" + code) if code in known else result.get("error", "")
+                self._emit_status_key("speech.install_failed", "Model installation failed: {error}", error=error)
+            self.speechSettingsChanged.emit()
+
+    @Slot()
+    def installSpeechModelPack(self):
+        from core.speech_models import install_pack, runtime_enabled
+        from PySide6.QtWidgets import QFileDialog
+        if self.speechModelInstalling:
+            return
+        if self.speechBusy:
+            self._emit_status_key("speech.stop_before_install", "Stop recording before installing model files.")
+            return
+        path, _ = QFileDialog.getOpenFileName(None, self._tr("speech.install_pack"), "", "Mouser model pack (*.zip)")
+        if not path:
+            return
+        # Native file dialogs run a nested event loop; a mouse shortcut could
+        # have started recording while the picker was open.
+        if self.speechBusy or self.speechModelInstalling:
+            self._emit_status_key("speech.stop_before_install", "Stop recording before installing model files.")
+            return
+        self._speech_model_installing = True
+        self._speech_install_cancel = None  # Manual ZIP installation is atomic.
+        self._speech_model_install_progress = 0
+        self.speechSettingsChanged.emit()
+        def install():
+            try:
+                install_pack(path, progress=self._speechPackProgress.emit)
+                result = {"ok": True}
+            except Exception as error:
+                result = {"ok": False, "error": str(error)}
+            self._speechPackFinished.emit(result)
+        threading.Thread(target=install, name="MouserModelInstall", daemon=True).start()
+
+    @Slot()
+    def openSpeechModelDirectory(self):
+        from core.speech_models import model_directory
+        from PySide6.QtGui import QDesktopServices
+        directory = model_directory()
+        directory.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
+
+    @Slot(str)
+    def useSpeechModel(self, pack_id):
+        from core.speech_models import catalog_status, find_model, STREAMING_MODEL, pack_paths
+        status = catalog_status()
+        item = next((item for item in status if item["id"] == pack_id), None)
+        if not item or not item["installed"] or not item["vad_installed"]:
+            self._emit_status_key("speech.install_help", "Install a model pack in Voice settings first. No microphone has been opened.")
+            return
+        settings = self._cfg.setdefault("settings", {}).setdefault("speech_to_text", {})
+        settings["engine"] = item["engine"]
+        settings[{"sensevoice": "sense_voice_model_path", "zipformer": "sherpa_model_path",
+                  "whisper-small": "model_path"}[pack_id]] = ""
+        settings["vad_model_path"] = ""
+        # Selecting an installed catalog model should not retain a broken
+        # preview path from an older portable folder. Keep valid custom paths.
+        preview = next((entry for entry in status if entry["id"] == "zipformer"), None)
+        if pack_id != "zipformer" and settings.get("preview_enabled", True) and preview and preview["installed"]:
+            required = [name.split("/", 1)[1] for name in pack_paths("zipformer") if "/" in name]
+            if find_model(STREAMING_MODEL, str(settings.get("sherpa_model_path") or ""), required) is None:
+                settings["sherpa_model_path"] = ""
+        if pack_id == "whisper-small":
+            settings.update(model="small", model_path="")
+        save_config(self._cfg)
+        self.speechSettingsChanged.emit()
+
+    @Property(str, notify=speechSettingsChanged)
+    def speechActiveModel(self):
+        return getattr(self, "_speech_active_model", "")
+
+    @Property(bool, notify=speechSettingsChanged)
+    def speechBusy(self):
+        return getattr(self, "_speech_busy", False)
+
+    @Slot(bool)
+    def updateSpeechBusy(self, busy):
+        self._speech_busy = busy
+        self.speechSettingsChanged.emit()
+
+    @Slot(str)
+    def updateSpeechActiveModel(self, name):
+        self._speech_active_model = name
+        self.speechSettingsChanged.emit()
+
+    @Property(float, notify=speechLevelChanged)
+    def speechAudioLevel(self):
+        return getattr(self, "_speech_audio_level", 0.0)
+
+    @Slot(float)
+    def updateSpeechAudioLevel(self, level):
+        self._speech_audio_level = max(0.0, min(1.0, level))
+        self.speechLevelChanged.emit()
+
+    @Property(list, notify=speechSettingsChanged)
+    def speechMicrophones(self):
+        microphones = getattr(self, "_speech_microphones", [{"key": "", "name": ""}])
+        return [{**item, "name": item["name"] or self._tr("speech.system_microphone", "System default microphone")}
+                for item in microphones]
+
+    @Property(str, notify=speechPendingChanged)
+    def speechPendingText(self):
+        return getattr(self, "_speech_pending_text", "")
+
+    @Slot(str)
+    def updateSpeechPendingText(self, text):
+        self._speech_pending_text = text
+        self.speechPendingChanged.emit()
+
+    @Slot()
+    def copySpeechPendingText(self):
+        if self.speechPendingText:
+            self.copyToClipboard(self.speechPendingText)
+            self._emit_status_key("speech.pending_copied", "Unsubmitted voice text copied.")
+
+    @Slot()
+    def requestSpeechTest(self):
+        if self.speechModelInstalling:
+            return
+        from core.key_simulator import request_speech_action
+        request_speech_action("speech_to_text")
+
+    @Slot()
+    def refreshSpeechMicrophones(self):
+        from core.speech_models import runtime_enabled
+        if not runtime_enabled():
+            self._speech_microphones = [{"key": "", "name": ""}]
+            self.speechSettingsChanged.emit()
+            return
+        if getattr(self, "_speech_microphones_refreshing", False):
+            return
+        self._speech_microphones_refreshing = True
+        def query():
+            from core.speech_client import SpeechClient
+            client = SpeechClient()
+            try:
+                result = {"ok": True, "devices": client.query("devices")["devices"]}
+            except Exception:
+                result = {"ok": False, "devices": [{"key": "", "name": ""}]}
+            finally:
+                client.close()
+            self._speechMicrophonesFinished.emit(result)
+        threading.Thread(target=query, name="MouserMicrophones", daemon=True).start()
+
+    @Slot(object)
+    def _finishSpeechMicrophones(self, result):
+        self._speech_microphones_refreshing = False
+        self._speech_microphones = result["devices"]
+        if not result.get("ok"):
+            self._emit_status_key("speech.microphones_unavailable", "Microphone list is unavailable.")
+        self.speechSettingsChanged.emit()
+
+    @Slot(str, "QVariant")
+    def setSpeechSetting(self, key, value):
+        from core.speech_session import SPEECH_DEFAULTS
+        allowed = {"engine", "model", "language", "microphone", "preview_enabled", "auto_paste",
+                   "silence_stop_seconds", "custom_words", "corrections", "corrections_enabled", "model_path"}
+        if key not in allowed:
+            return
+        enums = {"engine": {"auto", "sense_voice", "sherpa_onnx_streaming", "faster_whisper"},
+                 "model": {"small", "medium", "large-v3-turbo"},
+                 "language": {"zh", "en", "yue", "ja", "ko", "auto", "follow_ui"}}
+        if key in enums and value not in enums[key]:
+            return
+        if key == "silence_stop_seconds":
+            try:
+                value = max(0.4, min(3.0, float(value)))
+            except (TypeError, ValueError):
+                return
+        elif isinstance(SPEECH_DEFAULTS.get(key), bool):
+            value = bool(value)
+        elif not isinstance(value, str) or len(value) > 12000:
+            return
+        settings = self._cfg.setdefault("settings", {}).setdefault("speech_to_text", {})
+        settings[key] = value
+        if key == "model":
+            settings["model_path"] = ""
+        save_config(self._cfg)
+        self.speechSettingsChanged.emit()
+
+    @Slot(str, str)
+    def setSpeechVocabulary(self, words, rules):
+        if len(words) > 12000 or len(rules) > 12000:
+            return
+        settings = self._cfg.setdefault("settings", {}).setdefault("speech_to_text", {})
+        settings.update(custom_words=words, corrections=rules)
+        save_config(self._cfg)
+        self.speechSettingsChanged.emit()
+        self._emit_status_key("speech.words_saved", "Vocabulary and correction rules saved.")
+
+    @Slot()
+    def chooseSpeechModelFolder(self):
+        from PySide6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(None, self._tr("speech.choose_model", "Choose local Whisper model folder"))
+        if path:
+            if not (Path(path) / "model.bin").is_file() or not (Path(path) / "config.json").is_file():
+                self._emit_status_key("speech.invalid_model", "This is not a faster-whisper model folder.")
+                return
+            self.setSpeechSetting("model_path", path)
+
+    @Slot()
+    def copyDiagnosticInfo(self):
+        parts = [self.dumpDeviceInfo(), self.debugLog, self.gestureRecords]
+        self.copyToClipboard("\n\n".join(part for part in parts if part))
+        self._emit_status_key("mouse.diagnostics_copied", "Diagnostics copied. Check personal information before sharing.")
 
     def _battery_updated_text(self):
         if self._battery_updated_at is None:
@@ -1370,6 +1720,133 @@ class Backend(QObject):
     def mouseConnected(self):
         return self._mouse_connected
 
+    @Property(bool, constant=True)
+    def deviceDiscoverySupported(self):
+        return sys.platform.startswith("win")
+
+    @Slot()
+    def _refreshDeviceInventorySnapshot(self):
+        snapshot = getattr(self._engine, "device_inventory", None) if self._engine else None
+        if isinstance(snapshot, dict) and snapshot != self._device_inventory_snapshot:
+            self._device_inventory_snapshot = snapshot
+            self.deviceInventoryChanged.emit()
+
+    @Property(list, notify=deviceInventoryChanged)
+    def logitechDeviceChoices(self):
+        language = self._language()
+        choices = [{"identity": "", "label": translate_string(language, "mouse.device_auto")}]
+        devices = self._device_inventory_snapshot.get("devices", [])
+        for device in devices:
+            if not device.get("mouse"):
+                continue
+            name = device.get("name") or translate_string(language, "mouse.device_unknown")
+            status = translate_string(language, "mouse.device_status_" + device.get("status", "communication_failed"))
+            transport = self._localized_transport(device.get("transport", ""))
+            label = name + (" · " + transport if transport else "")
+            if int(device.get("slot", 255)) != 255:
+                label += " · " + translate_string(language, "mouse.device_slot").format(slot=device["slot"])
+            label += " · " + status
+            if not device.get("model_confirmed"):
+                label += " · " + translate_string(language, "mouse.device_model_unconfirmed")
+            choices.append({"identity": device["identity"], "label": label})
+        preferred = self._cfg.get("settings", {}).get("preferred_logi_device", {})
+        if preferred.get("identity") and not any(c["identity"] == preferred["identity"] for c in choices):
+            choices.append({"identity": preferred["identity"],
+                            "label": (preferred.get("name") or translate_string(language, "mouse.device_unknown"))
+                                     + " · " + translate_string(language, "mouse.device_status_offline")})
+        return choices
+
+    def _localized_transport(self, transport):
+        key = {
+            "USB Receiver": "mouse.transport_receiver",
+            "Logi Bolt": "mouse.transport_bolt",
+            "Bluetooth": "mouse.transport_bluetooth",
+            "Bluetooth Low Energy": "mouse.transport_ble",
+            "USB": "mouse.transport_usb",
+        }.get(transport)
+        return translate_string(self._language(), key) if key else transport
+
+    @Property(str, notify=deviceInventoryChanged)
+    def managedLogitechDeviceLabel(self):
+        """Show the actual target, not a second fictitious 'Automatic' mouse."""
+        language = self._language()
+        preferred = self._cfg.get("settings", {}).get("preferred_logi_device", {})
+        identity = preferred.get("identity") or self._device_inventory_snapshot.get("selected", "")
+        devices = [d for d in self._device_inventory_snapshot.get("devices", [])
+                   if d.get("mouse") and d.get("identity") == identity]
+        device = devices[0] if len(devices) == 1 else None
+        if preferred.get("identity"):
+            name = (device or preferred).get("name") or translate_string(language, "mouse.device_unknown")
+            if not device or not device.get("online"):
+                return name + " · " + translate_string(language, "mouse.device_status_offline")
+            return name
+        if device and device.get("online"):
+            name = device.get("name") or translate_string(language, "mouse.device_unknown")
+            return translate_string(language, "mouse.device_auto_current").format(name=name)
+        return translate_string(language, "mouse.device_auto")
+
+    @Property(str, notify=deviceInventoryChanged)
+    def preferredLogitechDeviceId(self):
+        return self._cfg.get("settings", {}).get("preferred_logi_device", {}).get("identity", "")
+
+    @Property(str, notify=deviceInventoryChanged)
+    def deviceDiscoveryMessage(self):
+        language = self._language()
+        snapshot = self._device_inventory_snapshot
+        if snapshot.get("status") == "scanning":
+            return translate_string(language, "mouse.device_scanning")
+        mice = [d for d in snapshot.get("devices", []) if d.get("mouse")]
+        online = sum(bool(d.get("online")) for d in mice)
+        preferred = self.preferredLogitechDeviceId
+        if preferred and not any(d["identity"] == preferred and d.get("online") for d in mice):
+            return translate_string(language, "mouse.device_target_offline")
+        if mice:
+            return translate_string(language, "mouse.device_summary").format(online=online, total=len(mice))
+        receivers = snapshot.get("receivers", [])
+        if any(r.get("status") == "communication_failed" for r in receivers):
+            return translate_string(language, "mouse.device_receiver_failed")
+        if receivers:
+            return translate_string(language, "mouse.device_receiver_only")
+        return translate_string(language, "mouse.device_none")
+
+    @Property(bool, notify=deviceInventoryChanged)
+    def deviceInventoryBusy(self):
+        return self._device_inventory_snapshot.get("status") == "scanning"
+
+    @Slot(str)
+    def selectLogitechDevice(self, identity):
+        devices = self._device_inventory_snapshot.get("devices", [])
+        matches = [d for d in devices if d.get("identity") == identity and d.get("mouse")]
+        if identity and len(matches) != 1:
+            self._emit_status_key("status.device_selection_failed", "Device selection could not be confirmed")
+            return
+        preference = ({key: matches[0].get(key, "") for key in ("identity", "name", "serial", "kind", "model_key")}
+                      if identity else {})
+        settings = self._cfg.setdefault("settings", {})
+        previous = settings.get("preferred_logi_device", {})
+        settings["preferred_logi_device"] = preference
+        try:
+            save_config(self._cfg)
+        except Exception:
+            settings["preferred_logi_device"] = previous
+            self._emit_status_key("status.device_selection_failed", "Device selection could not be saved")
+            return
+        if self._engine:
+            if hasattr(self._engine, "cfg"):
+                self._engine.cfg.setdefault("settings", {})["preferred_logi_device"] = preference
+            select = getattr(self._engine, "select_logitech_device", None)
+            if callable(select):
+                select(preference)
+        self.settingsChanged.emit()
+        self._emit_status_key("status.device_selection_saved", "Management target saved; reconnecting")
+
+    @Slot()
+    def refreshLogitechDevices(self):
+        refresh = getattr(self._engine, "refresh_logitech_devices", None) if self._engine else None
+        if callable(refresh):
+            refresh()
+        self._emit_status_key("status.device_refresh_requested", "Device scan requested")
+
     @Property(bool, notify=hidFeaturesReadyChanged)
     def hidFeaturesReady(self):
         return self._hid_features_ready
@@ -1384,7 +1861,7 @@ class Backend(QObject):
 
     @Property(str, notify=deviceInfoChanged)
     def connectionType(self):
-        return self._connected_device_transport
+        return self._localized_transport(self._connected_device_transport)
 
     @Property(int, notify=deviceInfoChanged)
     def deviceDpiMin(self):
@@ -1536,7 +2013,11 @@ class Backend(QObject):
 
     @Property(str, notify=gestureStateChanged)
     def gestureStatus(self):
-        return self._gesture_status
+        if self._gesture_status == "Idle":
+            return self._tr("mouse.monitor_idle", "Idle")
+        if self._gesture_status == "Gesture button held":
+            return self._tr("mouse.monitor_held", "Gesture button held")
+        return self._tr_debug_text(self._gesture_status)
 
     @Property(str, notify=gestureRecordsChanged)
     def gestureRecords(self):
@@ -2053,6 +2534,9 @@ class Backend(QObject):
                 self._engine.set_debug_enabled(self.debugMode)
             if hasattr(self._engine, "set_debug_events_enabled"):
                 self._engine.set_debug_events_enabled(self._debug_events_enabled)
+            select = getattr(self._engine, "select_logitech_device", None)
+            if callable(select):
+                select(self._cfg.get("settings", {}).get("preferred_logi_device", {}))
         self._sync_connected_device_info()
         self._configureUpdateChecks()
         self.settingsChanged.emit()

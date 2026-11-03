@@ -50,7 +50,11 @@ SCREENSHOT_ACTIONS = frozenset({
     "screenshot_full_file",
 })
 
+SPEECH_TO_TEXT_ACTION = "speech_to_text"
+SPEECH_ACTIONS = frozenset({SPEECH_TO_TEXT_ACTION})
+
 _screenshot_action_handler = None
+_speech_action_handler = None
 
 
 def is_screenshot_action(action_id):
@@ -73,6 +77,30 @@ def request_screenshot_action(action_id):
         _screenshot_action_handler(action_id)
     except Exception as exc:
         print(f"[KeySimulator] screenshot action handler failed: {exc}")
+        import traceback; traceback.print_exc()
+    return True
+
+
+def is_speech_action(action_id):
+    return action_id in SPEECH_ACTIONS
+
+
+def set_speech_action_handler(handler):
+    """Register a callable that performs speech actions off the hook thread."""
+    global _speech_action_handler
+    _speech_action_handler = handler
+
+
+def request_speech_action(action_id):
+    if not is_speech_action(action_id):
+        return False
+    if _speech_action_handler is None:
+        print(f"[KeySimulator] speech action unavailable: {action_id}")
+        return False
+    try:
+        _speech_action_handler(action_id)
+    except Exception as exc:
+        print(f"[KeySimulator] speech action handler failed: {exc}")
         import traceback; traceback.print_exc()
     return True
 
@@ -400,6 +428,16 @@ if sys.platform == "win32":
     def send_key_press(vk):
         send_key_combo([vk])
 
+    def send_paste_checked():
+        """Voice delivery needs a checked Ctrl+V, unlike fire-and-forget hooks."""
+        inputs = [_make_key_input(VK_CONTROL), _make_key_input(0x56),
+                  _make_key_input(0x56, KEYEVENTF_KEYUP), _make_key_input(VK_CONTROL, KEYEVENTF_KEYUP)]
+        sent = SendInput(len(inputs), (INPUT * len(inputs))(*inputs), sizeof(INPUT))
+        if sent != len(inputs):
+            release = [_make_key_input(0x56, KEYEVENTF_KEYUP), _make_key_input(VK_CONTROL, KEYEVENTF_KEYUP)]
+            SendInput(len(release), (INPUT * len(release))(*release), sizeof(INPUT))
+            raise RuntimeError("Windows blocked voice paste, possibly because the target has elevated permissions.")
+
     def _send_phased_alt_arrow(arrow_vk, hold_ms=50):
         # Some Chromium-based browsers silently drop batched VK-only SendInput chords;
         # phased modifier-down → key-tap → modifier-up with pauses is accepted reliably.
@@ -646,6 +684,11 @@ if sys.platform == "win32":
             "keys": [],
             "category": "Screenshot",
         },
+        "speech_to_text": {
+            "label": "Voice Typing",
+            "keys": [],
+            "category": "Voice",
+        },
         "none": {
             "label": "Do Nothing (Pass-through)",
             "keys": [],
@@ -688,6 +731,8 @@ if sys.platform == "win32":
                 inject_mouse_up(action_id)
                 return
             if request_screenshot_action(action_id):
+                return
+            if request_speech_action(action_id):
                 return
             action = ACTIONS.get(action_id)
             if not action or not action["keys"]:
@@ -1326,6 +1371,11 @@ elif sys.platform == "darwin":
             "keys": [kVK_Command, kVK_Shift, kVK_ANSI_3],
             "category": "Screenshot",
         },
+        "speech_to_text": {
+            "label": "Voice Typing",
+            "keys": [],
+            "category": "Voice",
+        },
         "none": {
             "label": "Do Nothing (Pass-through)",
             "keys": [],
@@ -1368,6 +1418,8 @@ elif sys.platform == "darwin":
             inject_mouse_up(action_id)
             return
         if request_screenshot_action(action_id):
+            return
+        if request_speech_action(action_id):
             return
         action = ACTIONS.get(action_id)
         if not action:
@@ -1787,6 +1839,11 @@ elif sys.platform == "linux":
             "keys": [],
             "category": "Screenshot",
         },
+        "speech_to_text": {
+            "label": "Voice Typing",
+            "keys": [],
+            "category": "Voice",
+        },
         "none": {
             "label": "Do Nothing (Pass-through)",
             "keys": [],
@@ -1830,6 +1887,8 @@ elif sys.platform == "linux":
             inject_mouse_up(action_id)
             return
         if request_screenshot_action(action_id):
+            return
+        if request_speech_action(action_id):
             return
         action = ACTIONS.get(action_id)
         if not action or not action["keys"]:

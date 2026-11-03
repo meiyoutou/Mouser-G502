@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from core.speech_session import SPEECH_DEFAULTS
 from datetime import datetime, timezone
 from urllib.parse import quote
 from core import app_catalog
@@ -332,6 +333,7 @@ DEFAULT_CONFIG = {
                 "debug_mode": False,
                 "g502_onboard_unlocked": False,
                 "device_layout_overrides": {},
+                "preferred_logi_device": {},
                 "language": "en",
         "haptic_level": 2,          # 0=subtle, 1=low, 2=medium, 3=high
         "haptic_enabled": True,     # global haptic on/off
@@ -340,6 +342,7 @@ DEFAULT_CONFIG = {
         "haptic_dedup": True,       # True = deduplicate pulses within 100ms window
         "ignore_trackpad": True,
         "screenshot_directory": "",
+        "speech_to_text": dict(SPEECH_DEFAULTS),
         "wheel_divert": WHEEL_DIVERT_DEFAULT,
         "check_for_updates": True,
         "update_check_state": {},
@@ -1046,6 +1049,10 @@ def _migrate(cfg):
     cfg["settings"].setdefault("ignore_trackpad", True)
     cfg["settings"].setdefault("scroll_force", 50)
     cfg["settings"].setdefault("screenshot_directory", "")
+    cfg["settings"].setdefault(
+        "speech_to_text",
+        _deepcopy_defaults()["settings"]["speech_to_text"],
+    )
     cfg["settings"].setdefault("check_for_updates", True)
     cfg["settings"].setdefault("update_check_state", {})
     cfg["settings"]["wheel_divert"] = coerce_wheel_divert_setting(

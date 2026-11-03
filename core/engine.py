@@ -1104,6 +1104,28 @@ class Engine:
         """Register a callback ``cb(profile_name)`` invoked on auto-switch."""
         self._profile_change_cb = cb
 
+    @property
+    def device_inventory(self):
+        listener = getattr(self.hook, "_hid_gesture", None)
+        return getattr(listener, "device_inventory", {"devices": [], "receivers": [], "status": "idle", "selected": ""})
+
+    def select_logitech_device(self, preference):
+        """Keep mappings intact; only change the HID++ management target."""
+        self.hook._preferred_logi_device = dict(preference or {})
+        listener = getattr(self.hook, "_hid_gesture", None)
+        if listener is None:
+            return True  # next start consumes the preference
+        listener.configure_device_selection(preference)
+        listener.force_reconnect()
+        return True
+
+    def refresh_logitech_devices(self):
+        listener = getattr(self.hook, "_hid_gesture", None)
+        if listener is not None:
+            listener.refresh_device_inventory()
+            return True
+        return False
+
     def set_debug_callback(self, cb):
         """Register ``cb(message: str)`` invoked for debug events."""
         self._debug_cb = cb
@@ -1892,6 +1914,7 @@ class Engine:
 
     def start(self):
         self._emit_linux_permission_warning()
+        self.hook._preferred_logi_device = dict(self.cfg.get("settings", {}).get("preferred_logi_device", {}))
         self.hook.start()
         self._start_runtime_watchdog()
         self._app_detector.start()
