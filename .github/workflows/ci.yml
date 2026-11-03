@@ -29,7 +29,15 @@ jobs:
             libxcb-render-util0 \
             libxcb-shape0 \
             libxcb-xkb1 \
-            libportaudio2
+            libportaudio2 \
+            pulseaudio
+
+      - name: Start headless audio service
+        # PortAudio initializes its host APIs even when no input stream is
+        # opened. Provide a virtual audio server for the import-only checks.
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=mouser_ci
 
       - name: Install dependencies
         # Exercise optional voice tests without bundling these dependencies in

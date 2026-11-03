@@ -31,7 +31,7 @@ class MouseDeviceHeaderTests(unittest.TestCase):
 def _qml_smoke():
     import copy
     from unittest.mock import patch
-    from PySide6.QtCore import QEventLoop, QObject, QMetaObject, QPointF, QTimer, QUrl, qInstallMessageHandler
+    from PySide6.QtCore import Property, QEventLoop, QObject, QMetaObject, QPointF, QTimer, QUrl, qInstallMessageHandler
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
     from core.config import DEFAULT_CONFIG
@@ -40,6 +40,14 @@ def _qml_smoke():
     from tests.test_backend import _FakeEngine
     from ui.backend import Backend
     from ui.locale_manager import LocaleManager
+
+    class WindowsHeaderBackend(Backend):
+        # This synthetic UI test exercises the Windows-only selector even
+        # when the rendering host is Linux. Do not change sys.platform or
+        # load real Windows hardware backends in the test process.
+        @Property(bool, constant=True)
+        def deviceDiscoverySupported(self):
+            return True
 
     app = QApplication([])
     warnings = []
@@ -51,7 +59,7 @@ def _qml_smoke():
     engine = _FakeEngine(device_connected=True, connected_device=mouse)
     engine.haptic_supported = False
     with patch("ui.backend.load_config", return_value=cfg), patch("ui.backend.save_config"), patch("ui.backend.supports_login_startup", return_value=False):
-        backend = Backend(engine=engine, root_dir=str(root_dir))
+        backend = WindowsHeaderBackend(engine=engine, root_dir=str(root_dir))
     backend._device_inventory_snapshot = {"status": "ready", "selected": "mouse1", "devices": [
         {"identity": "mouse1", "mouse": True, "name": "MX Master 2S", "slot": 1,
          "transport": "USB Receiver", "online": True, "status": "online", "model_confirmed": True},

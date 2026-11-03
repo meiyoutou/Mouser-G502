@@ -152,7 +152,9 @@ class ComponentTests(unittest.TestCase):
 
     def test_already_installed_selection_skips_download_and_runtime_install(self):
         status = [{"id": item, "installed": True, "vad_installed": True} for item in models.CATALOG]
-        with patch.object(models, "catalog_status", return_value=status), \
+        with patch.object(components.sys, "platform", "win32"), \
+             patch.object(components.platform, "machine", return_value="AMD64"), \
+             patch.object(models, "catalog_status", return_value=status), \
              patch.object(models, "model_directory", return_value=self.root / "models"), \
              patch.object(components, "model_directory", return_value=self.root / "models"), \
              patch.object(components, "runtime_executable", return_value=self.root / "worker.exe"), \
