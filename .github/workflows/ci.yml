@@ -40,7 +40,20 @@ jobs:
         run: python -m py_compile main_qml.py core/*.py ui/*.py
 
       - name: Run config tests
-        run: python -m unittest discover -s tests -p "test_*.py"
+        env:
+          QT_QPA_PLATFORM: offscreen
+        # Hold one QApplication for the entire suite. A test-created
+        # QGuiApplication otherwise prevents later QWidget tests from running.
+        run: |
+          python - <<'PY'
+          import unittest
+          from PySide6.QtWidgets import QApplication
+
+          app = QApplication([])
+          suite = unittest.defaultTestLoader.discover("tests", pattern="test_*.py")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() else 1)
+          PY
 
       - name: Lint QML
         run: |

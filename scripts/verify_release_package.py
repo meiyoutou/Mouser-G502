@@ -94,7 +94,9 @@ def main():
         assert archive.stat().st_size == asset["size"]
         with archive.open("rb") as file:
             assert hashlib.file_digest(file, "sha256").hexdigest() == asset["sha256"]
-    with tempfile.TemporaryDirectory(prefix="mouser-release-check-") as directory:
+    # Windows can briefly retain a helper DLL after the child shuts down.
+    # Cleanup contention must not replace a completed verification result.
+    with tempfile.TemporaryDirectory(prefix="mouser-release-check-", ignore_cleanup_errors=True) as directory:
         temporary = Path(directory)
         environment = {**os.environ, "APPDATA": str(temporary / "roaming"),
                        "LOCALAPPDATA": str(temporary / "local"),
