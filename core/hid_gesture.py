@@ -20,7 +20,11 @@ import queue
 import threading
 import time
 import weakref
+from itertools import cycle
 from dataclasses import replace as _dataclass_replace
+from core.hidpp_transaction import (
+    MAX_REPLY_POLLS, POLL_SOFTWARE_ID, REPLY_POLL_INTERVAL, RUNTIME_SOFTWARE_IDS,
+)
 
 from core.logi_devices import (
     DEFAULT_GESTURE_CIDS,
@@ -1092,6 +1096,7 @@ class HidGestureListener:
         self._battery_idx = None
         self._battery_feature_id = None
         self._dev_idx   = BT_DEV_IDX
+        self._request_software_ids = cycle(RUNTIME_SOFTWARE_IDS)
         self._gesture_cid = DEFAULT_GESTURE_CID
         self._gesture_candidates = list(DEFAULT_GESTURE_CIDS)
         self._held      = False
@@ -1449,7 +1454,7 @@ class HidGestureListener:
 
     # ── low-level HID++ I/O ───────────────────────────────────────
 
-    def _tx(self, report_id, feat, func, params):
+    def _tx(self, report_id, feat, func, params, *, software_id=MY_SW):
         """Transmit an HID++ message.  Always uses 20-byte long format
         because BLE HID collections typically only support long output reports."""
         if self._binding_invalidated:
@@ -1458,7 +1463,7 @@ class HidGestureListener:
         buf[0] = LONG_ID                 # always long for BLE compat
         buf[1] = self._dev_idx
         buf[2] = feat
-        buf[3] = ((func & 0x0F) << 4) | (MY_SW & 0x0F)
+        buf[3] = ((func & 0x0F) << 4) | (software_id & 0x0F)
         for i, b in enumerate(params):
             if 4 + i < LONG_LEN:
                 buf[4 + i] = b & 0xFF
@@ -1491,8 +1496,9 @@ class HidGestureListener:
     def _request(self, feat, func, params, timeout_ms=2000):
         """Send a long HID++ request, wait for matching response."""
         req_params = list(params)
+        software_id = next(self._request_software_ids)
         try:
-            self._tx(LONG_ID, feat, func, req_params)
+            self._tx(LONG_ID, feat, func, req_params, software_id=software_id)
         except Exception as exc:
             print(f"[HidGesture] request tx failed feat=0x{feat:02X} func=0x{func:X} "
                   f"params=[{_hex_bytes(req_params)}]: {exc}")
@@ -1502,10 +1508,22 @@ class HidGestureListener:
             if self._connected:
                 raise IOError(str(exc)) from exc
             return None
-        deadline = time.time() + timeout_ms / 1000
-        while time.time() < deadline:
+        deadline = time.monotonic() + timeout_ms / 1000
+        next_poll = time.monotonic() + REPLY_POLL_INTERVAL
+        polls = 0
+        while time.monotonic() < deadline and not self._stopping.is_set():
             try:
-                raw = self._rx(min(500, timeout_ms))
+                if polls < MAX_REPLY_POLLS and time.monotonic() >= next_poll:
+                    # Poll for the original reply, rather than replaying a
+                    # setter (or a non-idempotent haptic action).
+                    self._tx(LONG_ID, 0, 1, [0, 0, 0xA5], software_id=POLL_SOFTWARE_ID)
+                    polls += 1
+                    next_poll = time.monotonic() + REPLY_POLL_INTERVAL
+                remaining = max(1, int((deadline - time.monotonic()) * 1000))
+                wait = min(500, remaining)
+                if polls < MAX_REPLY_POLLS:
+                    wait = min(wait, max(1, int((next_poll - time.monotonic()) * 1000)))
+                raw = self._rx(wait)
             except Exception as exc:
                 print(f"[HidGesture] request rx failed feat=0x{feat:02X} func=0x{func:X} "
                       f"params=[{_hex_bytes(req_params)}]: {exc}")
@@ -1525,7 +1543,7 @@ class HidGestureListener:
             # HID++ error (feature-index 0xFF)
             if (r_feat in (0xFF, 0x8F) and r_func == (feat >> 4)
                     and r_sw == (feat & 0x0F) and len(r_params) >= 2
-                    and r_params[0] == ((func << 4) | MY_SW)):
+                    and r_params[0] == ((func << 4) | software_id)):
                 code = r_params[1]
                 code_name = HIDPP_ERROR_NAMES.get(code, "UNKNOWN")
                 print(f"[HidGesture] HID++ error 0x{code:02X} ({code_name}) "
@@ -1535,7 +1553,7 @@ class HidGestureListener:
                 return None
 
             expected_funcs = {func, (func + 1) & 0x0F}
-            if r_feat == feat and r_sw == MY_SW and r_func in expected_funcs:
+            if r_feat == feat and r_sw == software_id and r_func in expected_funcs:
                 self._consecutive_request_timeouts = 0
                 return msg
             # Forward non-matching reports (e.g. diverted button events) so
@@ -3231,8 +3249,12 @@ class HidGestureListener:
                     probe = IdentityProbe(self._dev, cancelled=self._stopping.is_set, short_handle=self._short_dev)
                     paired = probe.pairing(target.slot, int(pid) == BOLT_RECEIVER_PID) if is_receiver(info) else None
                     verified = probe.device(info, target.slot, paired)
-                    if verified is None or not verified.online or verified.identity != target.identity:
-                        raise OSError("selected slot identity changed before binding")
+                    if verified is None:
+                        raise OSError(f"selected slot {target.slot} did not return a device identity")
+                    if not verified.online:
+                        raise OSError(f"selected slot {target.slot} is offline or its identity probe timed out")
+                    if verified.identity != target.identity:
+                        raise OSError(f"selected slot {target.slot} identity changed before binding")
                 except Exception as exc:
                     print(f"[HidGesture] Refusing unverified device selection: {exc}")
                     self._dev.close()

@@ -10,6 +10,43 @@ import os
 import sys
 import threading
 
+LOG_MAX_BYTES = 1024 * 1024
+LOG_BACKUPS = 3  # current + 3 backups: approximately 4 MiB, not 30 MiB
+SPEECH_LOG_MAX_BYTES = 256 * 1024
+SPEECH_LOG_BACKUPS = 2  # current + 2 backups: approximately 768 KiB
+_speech_lock = threading.Lock()
+
+
+def set_debug_logging(enabled: bool) -> None:
+    """Follow the existing debug switch, without reconfiguring an embedding host."""
+    root = logging.getLogger()
+    if any(getattr(handler, "_mouser_owned", False) for handler in root.handlers):
+        explicit_debug = os.environ.get("MOUSER_LOG_LEVEL", "").upper() == "DEBUG"
+        root.setLevel(logging.DEBUG if enabled or explicit_debug else logging.INFO)
+
+
+def log_speech_event(message: str) -> None:
+    """Bound the existing event-only log; do not duplicate it into the root log."""
+    root = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Mouser")
+    path = os.path.abspath(os.path.join(root, "speech_to_text.log"))
+    with _speech_lock:
+        logger = logging.getLogger("mouser.speech.events")
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        if not logger.handlers or logger.handlers[0].baseFilename != path:
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+                handler.close()
+            os.makedirs(root, mode=0o700, exist_ok=True)
+            handler = logging.handlers.RotatingFileHandler(
+                path, maxBytes=SPEECH_LOG_MAX_BYTES, backupCount=SPEECH_LOG_BACKUPS,
+                encoding="utf-8",
+            )
+            handler.setFormatter(logging.Formatter(
+                "%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+            logger.addHandler(handler)
+        logger.info(message)
+
 
 def _get_log_dir() -> str:
     if sys.platform == "darwin":
@@ -86,11 +123,12 @@ def setup_logging() -> str:
         log_path = os.path.join(log_dir, "mouser.log")
         file_handler = logging.handlers.RotatingFileHandler(
             log_path,
-            maxBytes=5 * 1024 * 1024,  # 5 MB per file
-            backupCount=5,              # 25 MB total ceiling
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUPS,
             encoding="utf-8",
             delay=False,                # create file immediately on startup
         )
+        file_handler._mouser_owned = True
         file_handler.setFormatter(fmt)
         root.addHandler(file_handler)
     except OSError as exc:
@@ -104,10 +142,12 @@ def setup_logging() -> str:
     # sys.stdout is /dev/null, so we skip the StreamHandler.
     if not getattr(sys, "frozen", False):
         console_handler = logging.StreamHandler(sys.__stdout__)
+        console_handler._mouser_owned = True
         console_handler.setFormatter(fmt)
         root.addHandler(console_handler)
 
-    root.setLevel(logging.DEBUG)
+    root.setLevel(logging.INFO)
+    set_debug_logging(False)
 
     # Redirect stdout — must come AFTER StreamHandler setup above.
     # StreamHandler uses sys.__stdout__ (original), not sys.stdout, so

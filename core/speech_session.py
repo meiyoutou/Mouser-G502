@@ -120,8 +120,8 @@ def create_vad(settings):
         raise RuntimeError("Silero VAD model is missing; install a model pack in Voice settings.")
     config = sherpa_onnx.VadModelConfig()
     config.silero_vad.model = str(model)
-    config.silero_vad.threshold = max(0.2, min(0.85, float(settings.get("vad_threshold", 0.5))))
-    config.silero_vad.min_silence_duration = max(0.4, min(3.0, float(settings.get("silence_stop_seconds", 1.2))))
+    config.silero_vad.threshold = max(0.01, min(0.99, float(settings.get("vad_threshold", 0.5))))
+    config.silero_vad.min_silence_duration = max(0.1, min(3.0, float(settings.get("silence_stop_seconds", 1.2))))
     config.silero_vad.min_speech_duration = max(0.1, min(0.5, float(settings.get("min_record_seconds", 0.25))))
     config.silero_vad.max_speech_duration = max(4.0, min(60.0, float(settings.get("max_record_seconds", 30))))
     config.sample_rate, config.num_threads = 16000, 1

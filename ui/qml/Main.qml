@@ -35,6 +35,11 @@ ApplicationWindow {
     property real hoveredNavCenterY: 0
     readonly property bool shortcutsBlocked: aboutDialog.visible
                                             || mousePageView.hasBlockingDialog
+                                            || (ringPageLoader.item !== null
+                                                && ringPageLoader.item.hasBlockingDialog)
+    readonly property bool canReleaseForBackground: !shortcutsBlocked
+                                && !(speechPageLoader.item !== null
+                                     && speechPageLoader.item.hasUnsavedDraft)
 
     property var navModel: {
         var items = [
@@ -291,10 +296,12 @@ ApplicationWindow {
                 source: "HapticPage.qml"
             }
             Loader {
+                id: ringPageLoader
                 active: (root.currentPage === 3 || item) && backend.deviceHasActionsRing && backend.actionsRingActive
                 source: "ActionsRingConfig.qml"
             }
             Loader {
+                id: speechPageLoader
                 active: root.currentPage === 4 || item
                 source: "SpeechPage.qml"
             }

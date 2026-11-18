@@ -58,3 +58,8 @@ build_icon.py
 
 # Shortcuts (user-specific paths)
 *.lnk
+
+# Explicit local screenshot diagnostics may contain private selected pixels.
+scroll_diagnostics/
+本地诊断记录/
+screenshot-diagnostics-*/

@@ -23,6 +23,14 @@ class Response(io.BytesIO):
 
 
 class ComponentTests(unittest.TestCase):
+    def test_published_runtime_catalog_has_pinned_v2_download(self):
+        runtime = components.assets_catalog()["runtime"]
+        self.assertTrue(runtime["available_online"])
+        self.assertEqual(runtime["url"],
+            components.RELEASE_URL + "/" + runtime["name"])
+        self.assertEqual(len(runtime["sha256"]), 64)
+        self.assertEqual(len(runtime["exe_sha256"]), 64)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="mouser-component-test-")
         self.addCleanup(self.directory.cleanup)
@@ -107,6 +115,68 @@ class ComponentTests(unittest.TestCase):
         asset = {**self.asset(value), "expanded_size": sum(len(data) for data in files.values()),
                  "exe_sha256": hashlib.sha256(files["MouserSpeech.exe"]).hexdigest()}
         return archive, asset
+
+    def test_verified_local_archive_is_selected_without_network(self):
+        asset = self.asset(b"safe")
+        (self.root / asset["name"]).write_bytes(b"safe")
+        self.assertEqual(components.local_archive(asset, [self.root]), self.root / asset["name"])
+
+    def test_corrupt_local_archive_is_rejected_not_silently_downloaded(self):
+        asset = self.asset(b"safe")
+        (self.root / asset["name"]).write_bytes(b"bad!")
+        with self.assertRaises(components.ComponentError) as error:
+            components.local_archive(asset, [self.root])
+        self.assertEqual(error.exception.code, "checksum")
+
+    def test_missing_local_archive_returns_none_and_unsafe_name_is_rejected(self):
+        self.assertIsNone(components.local_archive(self.asset(b"safe"), [self.root]))
+        with self.assertRaises(ValueError):
+            components.local_archive({**self.asset(b"safe"), "name": "../escape.zip"}, [self.root])
+
+    def test_selection_installs_local_pack_without_download(self):
+        asset = self.asset(b"safe")
+        (self.root / asset["name"]).write_bytes(b"safe")
+        status = [{"id": item, "installed": False, "vad_installed": False} for item in models.CATALOG]
+        phases = []
+        with patch.object(components.sys, "platform", "win32"), patch.object(components.platform, "machine", return_value="AMD64"), \
+             patch.object(models, "catalog_status", return_value=status), patch.object(components, "model_directory", return_value=self.root / "models"), \
+             patch.object(components, "runtime_executable", return_value=self.root / "worker.exe"), \
+             patch.object(components, "install_pack") as install, patch.object(components, "download") as download:
+            components.install_selection("zipformer", False, assets={"zipformer": {**asset, "expanded_size": 4}},
+                                         archive_roots=[self.root], phase=lambda *p: phases.append(p))
+            download.assert_not_called()
+            self.assertEqual(install.call_args.args[0], self.root / asset["name"])
+            self.assertEqual(phases, [("local", "zipformer"), ("install", "zipformer")])
+
+    def test_network_failure_codes_do_not_leak_proxy_credentials(self):
+        import urllib.error
+        error = urllib.error.URLError(TimeoutError("http://name:secret@proxy.example/"))
+        self.assertEqual(components.network_failure_reason(error), "TIMEOUT")
+
+    def test_missing_local_model_falls_back_to_download(self):
+        asset = {**self.asset(b"safe"), "expanded_size": 4}
+        status = [{"id": item, "installed": False, "vad_installed": False} for item in models.CATALOG]
+        phases = []
+        with patch.object(components.sys, "platform", "win32"), patch.object(components.platform, "machine", return_value="AMD64"), \
+             patch.object(models, "catalog_status", return_value=status), patch.object(components, "model_directory", return_value=self.root / "models"), \
+             patch.object(components, "runtime_executable", return_value=self.root / "worker.exe"), \
+             patch.object(components, "install_pack") as install, patch.object(components, "download", return_value=self.root / "downloaded.zip") as download:
+            components.install_selection("zipformer", False, assets={"zipformer": asset},
+                                         archive_roots=[self.root], phase=lambda *p: phases.append(p))
+            download.assert_called_once()
+            self.assertEqual(install.call_args.args[0], self.root / "downloaded.zip")
+            self.assertEqual(phases, [("local", "zipformer"), ("download", "zipformer"), ("install", "zipformer")])
+
+    def test_unpublished_test_runtime_requires_local_archive(self):
+        status = [{"id": item, "installed": True, "vad_installed": True} for item in models.CATALOG]
+        asset = {**self.asset(b"safe"), "expanded_size": 4, "available_online": False}
+        with patch.object(components.sys, "platform", "win32"), patch.object(components.platform, "machine", return_value="AMD64"), \
+             patch.object(models, "catalog_status", return_value=status), patch.object(components, "model_directory", return_value=self.root / "models"), \
+             patch.object(components, "runtime_executable", return_value=None), patch.object(components, "download") as download:
+            with self.assertRaises(components.ComponentError) as error:
+                components.install_selection("zipformer", False, assets={"runtime": asset}, archive_roots=[self.root])
+            self.assertEqual(error.exception.code, "local")
+            download.assert_not_called()
 
     def test_runtime_install_is_version_pinned_and_has_no_user_data(self):
         archive, asset = self.runtime_pack()

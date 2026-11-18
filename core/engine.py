@@ -934,6 +934,9 @@ class Engine:
             now = getattr(event, "timestamp", None) or time.time()
 
             cooldown = HSCROLL_VOLUME_COOLDOWN_S if action_id in _VOLUME_ACTIONS else HSCROLL_ACTION_COOLDOWN_S
+            if action_id not in _VOLUME_ACTIONS:
+                settings = self.cfg.get("settings", {})
+                cooldown = max(1, min(1000, int(settings.get("hscroll_action_cooldown_ms", round(cooldown * 1000))))) / 1000.0
             if now - state["last_fire_at"] < cooldown:
                 state["accum"] = 0.0
                 return

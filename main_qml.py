@@ -40,6 +40,16 @@ sys.path.insert(0, ROOT)
 
 _WINDOWS_DLL_DIRECTORY_HANDLES = []
 
+if __name__ == "__main__" and "--scroll-compute-worker" in sys.argv:
+    from core.scroll_compute import serve as serve_scroll_compute
+    raise SystemExit(serve_scroll_compute())
+
+# The one-shot text-selection child must not initialize Qt, logs, configuration,
+# mouse hooks or single-instance activation, and must work beside a running app.
+if __name__ == "__main__" and "--text-selection-worker" in sys.argv:
+    from core.text_selection_worker import main as text_select_main
+    raise SystemExit(text_select_main(sys.argv[sys.argv.index("--text-selection-worker") + 1:]))
+
 
 def _prepare_windows_dll_search_paths():
     """Make PyInstaller's bundled Qt DLL folders visible before PySide6 imports."""
@@ -63,6 +73,49 @@ def _prepare_windows_dll_search_paths():
 
 
 _prepare_windows_dll_search_paths()
+
+if __name__ == "__main__" and "--check-resource-lifecycle" in sys.argv:
+    from ui.resource_lifecycle_check import run_check as check_resource_lifecycle
+    index = sys.argv.index("--check-resource-lifecycle")
+    if index + 1 >= len(sys.argv):
+        raise SystemExit(2)
+    raise SystemExit(check_resource_lifecycle(sys.argv[index + 1]))
+
+if __name__ == "__main__" and "--check-resource-runtime" in sys.argv:
+    from ui.screenshot_resource_check import run_check as check_resource_runtime
+    index = sys.argv.index("--check-resource-runtime")
+    if index + 1 >= len(sys.argv):
+        raise SystemExit(2)
+    raise SystemExit(check_resource_runtime(sys.argv[index + 1]))
+
+if __name__ == "__main__" and "--check-text-selection" in sys.argv:
+    from ui.screenshot_text_check import run_check as check_selection_worker
+    index = sys.argv.index("--check-text-selection")
+    try:
+        check_result = check_selection_worker(sys.argv[index + 1])
+    except Exception as check_error:
+        import json
+        from pathlib import Path
+        Path(sys.argv[index + 1]).write_text(json.dumps({
+            "ok": False, "error_type": type(check_error).__name__, "detail": str(check_error)
+        }, ensure_ascii=False), encoding="utf-8")
+        check_result = 1
+    raise SystemExit(check_result)
+
+# These explicit diagnostic entries run before logging, configuration, HID
+# imports/engine setup and single-instance handling. The normal app may stay on.
+if __name__ == "__main__" and (
+    "--diagnose-scroll" in sys.argv
+    or os.path.basename(sys.executable).lower() == "mouser-scroll-diagnostic.exe"
+):
+    from ui.screenshot_diagnostics import run_diagnostic
+    raise SystemExit(run_diagnostic())
+if __name__ == "__main__" and "--check-scroll-diagnostics" in sys.argv:
+    index = sys.argv.index("--check-scroll-diagnostics")
+    if index + 1 >= len(sys.argv):
+        raise SystemExit(2)
+    from ui.screenshot_diagnostics import run_check
+    raise SystemExit(run_check(sys.argv[index + 1]))
 
 from core.log_setup import setup_logging
 setup_logging()
@@ -1208,6 +1261,8 @@ def main():
         screenshot_controller = WindowsScreenshotController(
             status_callback=backend.statusMessage.emit,
             path_factory=backend.next_screenshot_file_path,
+            editor_enabled=lambda: backend.screenshotEditorEnabled,
+            locale=locale_mgr,
             parent=app,
         )
         app._mouser_screenshot_controller = screenshot_controller
@@ -1258,29 +1313,28 @@ def main():
     app.aboutToQuit.connect(speech_controller.shutdown)
     set_speech_action_handler(speech_controller.request_action)
 
-    # ── QML Engine ─────────────────────────────────────────────
-    qml_engine = QQmlApplicationEngine()
-    qml_engine.addImageProvider("appicons", AppIconProvider(ROOT))
-    qml_engine.addImageProvider("systemicons", SystemIconProvider())
-    qml_engine.rootContext().setContextProperty("backend", backend)
-    qml_engine.rootContext().setContextProperty("uiState", ui_state)
-    qml_engine.rootContext().setContextProperty("lm", locale_mgr)
-    qml_engine.rootContext().setContextProperty("launchHidden", launch_hidden)
-    qml_engine.rootContext().setContextProperty("appVersion", APP_VERSION)
-    qml_engine.rootContext().setContextProperty("appBuildMode", APP_BUILD_MODE)
-    qml_engine.rootContext().setContextProperty("appCommit", APP_COMMIT_DISPLAY)
-    qml_engine.rootContext().setContextProperty(
-        "appLaunchPath", _runtime_launch_path().replace("\\", "/"))
+    # Settings lifetime is independent of hooks/voice/capture. Tray-only startup
+    # does not create QML; safe hidden windows release after an idle grace period.
+    from ui.settings_window import SettingsWindowController
 
-    qml_path = os.path.join(ROOT, "ui", "qml", "Main.qml")
-    qml_engine.load(QUrl.fromLocalFile(qml_path))
-    _t8 = _time.perf_counter()
+    def create_settings_engine():
+        qml_engine = QQmlApplicationEngine()
+        qml_engine.addImageProvider("appicons", AppIconProvider(ROOT))
+        qml_engine.addImageProvider("systemicons", SystemIconProvider())
+        values = {
+            "backend": backend, "uiState": ui_state, "lm": locale_mgr,
+            "launchHidden": True, "appVersion": APP_VERSION,
+            "appBuildMode": APP_BUILD_MODE, "appCommit": APP_COMMIT_DISPLAY,
+            "appLaunchPath": _runtime_launch_path().replace("\\", "/"),
+        }
+        for key, value in values.items():
+            qml_engine.rootContext().setContextProperty(key, value)
+        qml_engine.load(QUrl.fromLocalFile(os.path.join(ROOT, "ui", "qml", "Main.qml")))
+        return qml_engine
 
-    if not qml_engine.rootObjects():
-        print("[Mouser] FATAL: Failed to load QML")
-        sys.exit(1)
-
-    root_window = qml_engine.rootObjects()[0]
+    settings_window = SettingsWindowController(create_settings_engine, app)
+    app._mouser_settings_window = settings_window
+    app.aboutToQuit.connect(settings_window.shutdown)
 
     def show_main_window():
         # Promote BEFORE show so the window registers with WindowServer's
@@ -1289,9 +1343,12 @@ def main():
         # transition (idempotent), so promotion is correct on the initial
         # launch path where this function is never called.
         _set_macos_activation_policy(regular=True)
-        root_window.showNormal()
-        root_window.raise_()
-        root_window.requestActivate()
+        try:
+            settings_window.show()
+        except RuntimeError as exc:
+            print(f"[Mouser] Settings window failed: {exc}")
+            QMessageBox.warning(None, "Mouser", str(exc))
+            return
         _schedule_macos_dock_icon_refresh()
         _activate_macos_window()
 
@@ -1318,6 +1375,7 @@ def main():
             QWindow.Visibility.Minimized,
         )
         engine.set_frontend_visible(frontend_visible)
+        backend.set_frontend_visible(frontend_visible)
         if sys.platform != "darwin":
             return
         _set_macos_activation_policy(regular=has_window_surface)
@@ -1326,14 +1384,14 @@ def main():
             # user actually sees it (covers initial launch + tray clicks).
             _activate_macos_window()
 
-    root_window.visibilityChanged.connect(_on_window_visibility_changed)
-    # The window was created before this handler was connected, so its initial
-    # visibility transition may already have fired with no listener. Reconcile
-    # the engine's frontend-visible flag now.
-    _on_window_visibility_changed(root_window.visibility())
+    settings_window.visibilityChanged.connect(_on_window_visibility_changed)
+    _on_window_visibility_changed(QWindow.Visibility.Hidden)
+    if not launch_hidden:
+        show_main_window()
+    _t8 = _time.perf_counter()
     if sys.platform == "darwin":
         global _MACOS_QUIT_FILTER
-        _MACOS_QUIT_FILTER = _MacOSQuitToTrayFilter(root_window, app)
+        _MACOS_QUIT_FILTER = _MacOSQuitToTrayFilter(settings_window, app)
         app.installEventFilter(_MACOS_QUIT_FILTER)
         app.commitDataRequest.connect(
             lambda *_: _allow_macos_session_quit_if_requested(_MACOS_QUIT_FILTER)
@@ -1488,6 +1546,28 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--check-screenshot-compact" in sys.argv:
+        index = sys.argv.index("--check-screenshot-compact")
+        from ui.screenshot_editor_check import run_compact_check
+        raise SystemExit(run_compact_check(sys.argv[index + 1]))
+    if "--screenshot-compact-demo" in sys.argv:
+        from ui.screenshot_editor_check import run_compact_demo
+        raise SystemExit(run_compact_demo())
+    if "--check-screenshot-phase2" in sys.argv:
+        index = sys.argv.index("--check-screenshot-phase2")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit(2)
+        from ui.screenshot_editor_check import run_phase2_check
+        raise SystemExit(run_phase2_check(sys.argv[index + 1]))
+    if "--check-screenshot-editor" in sys.argv:
+        index = sys.argv.index("--check-screenshot-editor")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit(2)
+        from ui.screenshot_editor_check import run_check
+        raise SystemExit(run_check(sys.argv[index + 1]))
+    if "--screenshot-editor-demo" in sys.argv:
+        from ui.screenshot_editor_check import run_demo
+        raise SystemExit(run_demo())
     if "--check-speech-runtime" in sys.argv:
         index = sys.argv.index("--check-speech-runtime")
         if index + 1 >= len(sys.argv):

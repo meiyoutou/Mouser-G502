@@ -9,6 +9,7 @@ Item {
     readonly property var theme: Theme.palette(uiState.darkMode)
     property var s: lm.strings
     property int pendingCustomSlot: -1
+    readonly property bool hasBlockingDialog: ringKeyCaptureDialog.visible
 
     Component {
         id: ringActionComboDelegate
@@ -151,8 +152,8 @@ Item {
                     }
 
                     Text {
-                        text: s["ring.hold_delay_desc"]
-                              || "How long to hold the thumb button before the ring appears"
+                        text: (s["ring.hold_delay_desc"]
+                              || "How long to hold the thumb button before the ring appears") + "\n" + s["ring.low_threshold_help"]
                         font {
                             family: uiState.fontFamily
                             pixelSize: 12
@@ -167,7 +168,7 @@ Item {
                         spacing: 12
 
                         Text {
-                            text: "100"
+                            text: "1"
                             font { family: uiState.fontFamily; pixelSize: 11 }
                             color: actionsRingConfig.theme.textDim
                         }
@@ -175,9 +176,9 @@ Item {
                         WheelSafeSlider {
                             id: holdDelaySlider
                             Layout.fillWidth: true
-                            from: 100
+                            from: 1
                             to: 500
-                            stepSize: 10
+                            stepSize: 1
                             value: backend.actionsRingHoldMs
                             accentColor: actionsRingConfig.theme.accent
                             accentDimColor: actionsRingConfig.theme.accentDim

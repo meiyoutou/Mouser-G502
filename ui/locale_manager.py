@@ -1501,6 +1501,13 @@ for _lang, _patch in _DEVICE_DISCOVERY_TRANSLATIONS.items():
     _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
 
 from ui.speech_locale import SPEECH_TRANSLATIONS
+from ui.sensitivity_locale import SENSITIVITY_TRANSLATIONS
+from ui.screenshot_locale import SCREENSHOT_TRANSLATIONS
+
+for _lang, _strings in SCREENSHOT_TRANSLATIONS.items():
+    _TRANSLATIONS.setdefault(_lang, {}).update(_strings)
+for _lang, _patch in SENSITIVITY_TRANSLATIONS.items():
+    _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
 for _lang, _patch in SPEECH_TRANSLATIONS.items():
     _TRANSLATION_PATCHES.setdefault(_lang, {}).update(_patch)
 

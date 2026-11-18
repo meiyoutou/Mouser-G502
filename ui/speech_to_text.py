@@ -7,7 +7,6 @@ import threading
 import time
 import traceback
 import wave
-from datetime import datetime
 from PySide6.QtCore import QObject, QPoint, QTimer, Qt, Signal, QMimeData
 from PySide6.QtGui import QGuiApplication
 from core.key_simulator import SPEECH_TO_TEXT_ACTION
@@ -491,10 +490,8 @@ class _StatusOverlay(QObject):
 
 def _log_speech_event(message):
     try:
-        root = Path(os.environ.get("APPDATA") or Path.home()) / "Mouser"
-        root.mkdir(parents=True, exist_ok=True)
-        with (root / "speech_to_text.log").open("a", encoding="utf-8") as handle:
-            handle.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
+        from core.log_setup import log_speech_event
+        log_speech_event(message)
     except OSError:
         pass
 

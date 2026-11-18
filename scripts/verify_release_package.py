@@ -21,27 +21,30 @@ sys.path.insert(0, str(ROOT))
 from core import speech_components, speech_models
 
 
-def archive_report(archive, version, commit):
+def archive_report(archive, version, commit, *, local_test=False):
     with zipfile.ZipFile(archive) as bundle:
         entries = bundle.infolist()
         names = [entry.filename for entry in entries]
         assert len(names) == len(set(names)), "Duplicate archive names"
-        private, models, libraries, root_icu = [], [], [], []
+        private, models, libraries, root_icu, screenshot_libraries = [], [], [], [], []
         for name in names:
             path = PurePosixPath(name)
             parts = [part.lower() for part in path.parts]
             assert parts and parts[0] == "mouser", "Unexpected archive root"
             assert ".." not in parts and "\\" not in name and ":" not in name
             basename = path.name.lower()
-            if (set(parts) & {".git", "appdata", "config_backups", "g502_backups", "logs"}
-                    or basename in {"config.json", "metadata.json", ".env"}
+            if (set(parts) & {".git", "appdata", "config_backups", "g502_backups", "logs",
+                              "scroll_diagnostics", "本地诊断记录"}
+                    or basename in {"config.json", "metadata.json", ".env", "trace.json"}
                     or basename.startswith("mouser-settings-")
                     or path.suffix.lower() in {".log", ".err", ".wav", ".mp3", ".flac"}):
                 private.append(name)
             if "speech_models" in parts or path.suffix.lower() in {".onnx", ".bin"}:
                 models.append(name)
-            if any(part.startswith(("sherpa_onnx", "faster_whisper", "ctranslate2", "numpy", "sounddevice", "onnxruntime", "torch")) for part in parts):
+            if any(part.startswith(("sherpa_onnx", "faster_whisper", "ctranslate2", "sounddevice", "onnxruntime", "torch")) for part in parts):
                 libraries.append(name)
+            if any(part.startswith(("numpy", "cv2", "opencv")) for part in parts):
+                screenshot_libraries.append(name)
             if (len(parts) == 3 and parts[1] == "_internal"
                     and basename.startswith("icu") and basename.endswith(".dll")):
                 root_icu.append(name)
@@ -52,7 +55,21 @@ def archive_report(archive, version, commit):
         assert bundle.testzip() is None, "Archive CRC failed"
         info = json.loads(bundle.read("Mouser/_internal/mouser_build_info.json"))
         assert info["version"] == version and info["commit"] == commit
-        assert info["dirty"] is False, "Release must describe a committed source tree"
+        if not local_test:
+            assert info["dirty"] is False, "Release must describe a committed source tree"
+            assert {PurePosixPath(name).parts[1] for name in names} <= {
+                "Mouser.exe", "_internal", "文字选择组件"
+            }, "Public portable package must contain runtime files only"
+        component_files = [name for name in names if name.startswith("Mouser/文字选择组件/")]
+        if component_files:
+            from core import text_selection
+            prefix = "Mouser/文字选择组件/"
+            manifest_bytes = bundle.read(prefix + "manifest.json")
+            assert hashlib.sha256(manifest_bytes).hexdigest() == text_selection.catalog()["manifest_sha256"]
+            manifest = json.loads(manifest_bytes)
+            assert {name[len(prefix):] for name in component_files} == {"manifest.json", *manifest["files"]}
+            for name, expected in manifest["files"].items():
+                assert hashlib.sha256(bundle.read(prefix + name)).hexdigest() == expected, name
         assert json.loads(bundle.read("Mouser/_internal/speech-runtime.json"))["enabled"] is False
         assert bundle.read("Mouser/_internal/core/speech_component_assets.json") == (ROOT / "core/speech_component_assets.json").read_bytes()
         for source in (ROOT / "ui/qml").glob("*.qml"):
@@ -60,10 +77,13 @@ def archive_report(archive, version, commit):
         assert any("uiautomation" in name.lower() for name in names), "Caret anchor runtime missing"
         with Path(archive).open("rb") as file:
             digest = hashlib.file_digest(file, "sha256").hexdigest()
-        return {"version": version, "commit": commit, "main_zip_bytes": Path(archive).stat().st_size,
+        return {"version": version, "commit": commit, "dirty": info["dirty"], "local_test": local_test,
+                "main_zip_bytes": Path(archive).stat().st_size,
                 "main_expanded_bytes": sum(item.file_size for item in entries), "sha256": digest,
                 "PersonalDataHitCount": len(private), "ModelFileCount": len(models),
                 "SpeechModulesCount": len(libraries), "RootIcuDllCount": len(root_icu),
+                "ScreenshotLibraryFileCount": len(screenshot_libraries),
+                "TextSelectionFileCount": len(component_files),
                 "archive_crc_ok": True, "catalog_and_qml_match_source": True}
 
 
@@ -86,8 +106,9 @@ def main():
     parser.add_argument("--version", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--local-test", action="store_true", help="Allow and report uncommitted source for a local test package only")
     args = parser.parse_args()
-    report = archive_report(args.archive, args.version, args.commit)
+    report = archive_report(args.archive, args.version, args.commit, local_test=args.local_test)
     assets = speech_components.assets_catalog()
     for asset in assets.values():
         archive = args.components_dir / asset["name"]
@@ -106,7 +127,7 @@ def main():
         destination = temporary / "speech_models"
         destination.mkdir()
         speech_components.install_runtime(args.components_dir / assets["runtime"]["name"], assets["runtime"],
-                                           destination=temporary / "speech_runtime/v1-win64")
+                                           destination=temporary / "speech_runtime/v2-win64")
         speech_models.install_pack(args.components_dir / assets["zipformer"]["name"], destination=destination)
         report["frozen_with_components"] = frozen_check(executable, environment, temporary / "installed.json")
         assert report["frozen_with_components"]["checks"]["independent_speech_runtime"]["ok"]

@@ -1886,7 +1886,7 @@ Item {
                                     Text {
                                         text: (
                                             gestureThresholdSlider.pressed
-                                            ? Math.round(gestureThresholdSlider.value / 5.0) * 5
+                                            ? Math.round(gestureThresholdSlider.value)
                                             : backend.gestureThreshold
                                         ) + " px"
                                         font { family: uiState.fontFamily; pixelSize: 12 }
@@ -1898,9 +1898,9 @@ Item {
                                     id: gestureThresholdSlider
                                     visible: swipeTapActionId === "none"
                                     width: parent.width
-                                    from: 20
+                                    from: 1
                                     to: 400
-                                    stepSize: 5
+                                    stepSize: 1
                                     value: backend.gestureThreshold
                                     accentColor: theme.accent
                                     accentDimColor: theme.accentDim
@@ -1910,7 +1910,7 @@ Item {
                                         if (!pressed) {
                                             gestureThresholdSave.stop()
                                             backend.setGestureThreshold(
-                                                Math.round(value / 5.0) * 5)
+                                                Math.round(value))
                                         }
                                     }
                                 }
@@ -1920,7 +1920,15 @@ Item {
                                     interval: 250
                                     repeat: false
                                     onTriggered: backend.setGestureThreshold(
-                                        Math.round(gestureThresholdSlider.value / 5.0) * 5)
+                                        Math.round(gestureThresholdSlider.value))
+                                }
+                                Text {
+                                    visible: swipeTapActionId === "none"
+                                    text: s["mouse.low_threshold_help"]
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    color: theme.textSecondary
+                                    font.pixelSize: 12
                                 }
 
                                 Text {
@@ -2231,7 +2239,7 @@ Item {
                                     }
                                     Text {
                                         text: (gsThreshold.pressed
-                                               ? Math.round(gsThreshold.value / 5.0) * 5
+                                               ? Math.round(gsThreshold.value)
                                                : backend.gestureThreshold) + " px"
                                         font { family: uiState.fontFamily; pixelSize: 12 }
                                         color: theme.textSecondary
@@ -2240,15 +2248,22 @@ Item {
                                 WheelSafeSlider {
                                     id: gsThreshold
                                     width: parent.width
-                                    from: 20; to: 400; stepSize: 5
+                                    from: 1; to: 400; stepSize: 1
                                     value: backend.gestureThreshold
                                     accentColor: theme.accent
                                     accentDimColor: theme.accentDim
                                     trackColor: theme.border
                                     onPressedChanged: {
                                         if (!pressed)
-                                            backend.setGestureThreshold(Math.round(value / 5.0) * 5)
+                                            backend.setGestureThreshold(Math.round(value))
                                     }
+                                }
+                                Text {
+                                    text: s["mouse.low_threshold_help"]
+                                    width: parent.width
+                                    wrapMode: Text.WordWrap
+                                    color: theme.textSecondary
+                                    font.pixelSize: 12
                                 }
 
                                 Text {

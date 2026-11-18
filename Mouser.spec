@@ -9,6 +9,7 @@ import os
 import sys
 import shutil
 import json
+import importlib.metadata
 import subprocess
 import PySide6
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
@@ -17,6 +18,7 @@ block_cipher = None
 ROOT = os.path.abspath(".")
 DIST_ROOT = os.path.abspath(globals().get("DISTPATH", "dist"))
 sys.path.insert(0, ROOT)
+from core.bundle_policy import unused_runtime_file
 PYSIDE6_DIR = os.path.dirname(PySide6.__file__)
 SPEECH_MODELS_DIR = os.path.join(ROOT, "speech_models")
 EDITION = os.environ.get("MOUSER_EDITION", "lite").strip().lower()
@@ -31,10 +33,11 @@ if MODEL_SELECTION not in {"none", "all", "sensevoice", "zipformer", "whisper-sm
 if not SPEECH_ENABLED and MODEL_SELECTION != "none":
     raise ValueError("Lite edition must not bundle speech models")
 SPEECH_EXCLUDES = [] if SPEECH_ENABLED else [
-    "numpy", "sounddevice", "_sounddevice", "_sounddevice_data", "sherpa_onnx",
+    "sounddevice", "_sounddevice", "_sounddevice_data", "sherpa_onnx",
     "sherpa_onnx_core", "soxr", "faster_whisper",
     "ctranslate2", "tokenizers", "huggingface_hub", "av", "onnxruntime",
     "torch", "transformers", "scipy", "sympy", "numba",
+    "rapidocr", "rapidocr_onnxruntime", "shapely", "pyclipper", "omegaconf",
 ]
 
 
@@ -121,6 +124,16 @@ def _write_build_info(version: str) -> str:
 APP_VERSION = _load_app_version()
 BUILD_INFO_DATA = _write_build_info(APP_VERSION)
 SPEECH_BINARIES, SPEECH_DATAS = _collect_optional_speech_runtime()
+# Image registration belongs to screenshots, not the optional speech/OCR packs.
+for package in ("opencv-python-headless", "numpy"):
+    distribution = importlib.metadata.distribution(package)
+    licenses = [item for item in distribution.files
+                if ".dist-info" in str(item) and "license" in str(item).lower()
+                and not str(item).endswith(".py")]
+    for item in licenses:
+        SPEECH_DATAS.append((str(distribution.locate_file(item)),
+                             os.path.join("third_party_licenses", package,
+                                          os.path.dirname(str(item)))))
 SPEECH_RUNTIME_MARKER = os.path.join(EDITION_BUILD_DIR, "speech-runtime.json")
 with open(SPEECH_RUNTIME_MARKER, "w", encoding="utf-8") as marker:
     json.dump({"enabled": SPEECH_ENABLED, "edition": EDITION}, marker)
@@ -143,12 +156,16 @@ a = Analysis(
         # Image assets
         (os.path.join(ROOT, "images"), "images"),
         (BUILD_INFO_DATA, "."),
+        (os.path.join(ROOT, "LICENSE"), "."),
+        (os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"), "."),
         (os.path.join(ROOT, "core", "speech_component_assets.json"), "core"),
+        (os.path.join(ROOT, "core", "text_selection_assets.json"), "core"),
     ] + SPEECH_DATAS,
     hiddenimports=[
         # conditional / lazy imports PyInstaller may miss
         "hid",
         "numpy",
+        "cv2",
         "sounddevice",
         "sherpa_onnx",
         "soxr",
@@ -160,8 +177,29 @@ a = Analysis(
         "huggingface_hub",
         "logging.handlers",
         "ctypes.wintypes",
+        "concurrent.futures.thread",
         "ui.locale_manager",
         "ui.speech_locale",
+        "ui.screenshot_editor",
+        "ui.screenshot_locale",
+        "ui.screenshot_editor_check",
+        "ui.screenshot_tools",
+        "ui.screenshot_scroll",
+        "ui.screenshot_scroll_region",
+        "ui.screenshot_motion",
+        "ui.screenshot_registration",
+        "ui.screenshot_resource_check",
+        "ui.screenshot_diagnostics",
+        "ui.screenshot_text_selection",
+        "ui.screenshot_session",
+        "ui.settings_window",
+        "ui.resource_lifecycle_check",
+        "ui.screenshot_toolbar",
+        "core.text_selection",
+        "core.scroll_compute",
+        "core.text_selection_worker",
+        "ui.screenshot_text_layer",
+        "ui.screenshot_text_check",
         "core.speech_anchor",
         "core.speech_session",
         "core.speech_runtime_check",
@@ -179,6 +217,9 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         *SPEECH_EXCLUDES,
+        # Screenshots/exports use PNG/JPEG/BMP, never AVIF or video decoding.
+        "PIL.AvifImagePlugin",
+        "PIL._avif",
         # ── Aggressively trim unneeded PySide6 modules ──
         "PySide6.QtWebEngine",
         "PySide6.QtWebEngineCore",
@@ -271,6 +312,8 @@ _qt_keep = {
 
 def _should_keep(name):
     """Return True if this binary/data entry should be kept."""
+    if unused_runtime_file(name):
+        return False
     base = os.path.basename(name)
     lower_base = base.lower()
 

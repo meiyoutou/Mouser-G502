@@ -95,6 +95,9 @@ class GestureRecognizer:
         self._cross_ratio = 0.5
         self._dir_eps = 7.5
         self._min_return = 22.5
+        self._min_samples = _MIN_SAMPLES
+        self._cross_floor = _CROSS_FLOOR
+        self._turn_hyst = _TURN_HYST
 
         self._reset_hold()
 
@@ -102,12 +105,21 @@ class GestureRecognizer:
                   settle_ms, cross_ratio):
         with self._lock:
             self._enabled = bool(enabled)
-            self._commit_distance = max(8.0, float(threshold))
+            self._commit_distance = max(1.0, float(threshold))
             self._commit_window = max(0.05, float(commit_window_ms) / 1000.0)
             self._settle = max(0.02, float(settle_ms) / 1000.0)
             self._cross_ratio = min(2.0, max(0.05, float(cross_ratio)))
             self._dir_eps = max(5.0, self._commit_distance * 0.15)
             self._min_return = max(14.0, self._commit_distance * 0.45)
+            # Keep established >=8 px behaviour. Scale every spatial gate
+            # below that, rather than silently imposing the old 5/14 px floors.
+            low_distance = self._commit_distance < 8.0
+            if low_distance:
+                self._dir_eps = max(0.15, self._commit_distance * 0.15)
+                self._min_return = max(0.45, self._commit_distance * 0.45)
+            self._min_samples = max(1, math.ceil(self._commit_distance / 2.0)) if low_distance else _MIN_SAMPLES
+            self._cross_floor = self._commit_distance * 0.15 if low_distance else _CROSS_FLOOR
+            self._turn_hyst = min(_TURN_HYST, self._commit_distance * 0.5)
 
     def begin(self):
         """Gesture button pressed — discard any prior state, start fresh."""
@@ -263,7 +275,7 @@ class GestureRecognizer:
         direction = self._evaluate_leg(leg_x, leg_y)
         if direction is None:
             return
-        if self._leg_samples < _MIN_SAMPLES:
+        if self._leg_samples < self._min_samples:
             return
         if not self._fire(direction, now, leg_x, leg_y, fires, debugs):
             return
@@ -285,7 +297,7 @@ class GestureRecognizer:
         pos = self._cx if axis == "x" else self._cy
         off = self._cy if axis == "x" else self._cx
 
-        if sign * pos < sign * self._latch_extreme - _TURN_HYST:
+        if sign * pos < sign * self._latch_extreme - self._turn_hyst:
             self._latch_extreme = pos
             self._latch_off_at_turn = off
             self._latch_turn_t = now
@@ -314,7 +326,7 @@ class GestureRecognizer:
             self._latch_turn_t = now
             self._latch_return_seen = False
             return
-        if abs(off_flick) > self._cross_ratio * flick + _CROSS_FLOOR:
+        if abs(off_flick) > self._cross_ratio * flick + self._cross_floor:
             return
 
         direction = self._locked_direction()
@@ -339,7 +351,7 @@ class GestureRecognizer:
             direction = DOWN if leg_y > 0 else UP
         if dominant < self._commit_distance:
             return None
-        if cross > self._cross_ratio * dominant + _CROSS_FLOOR:
+        if cross > self._cross_ratio * dominant + self._cross_floor:
             return None
         return direction
 

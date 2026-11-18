@@ -1,12 +1,19 @@
 # Mouser — Logitech Mouse Remapper
 
-Windows x64 **v3.7.34** is this fork's current release, with on-demand local
-speech components and Logitech receiver-slot device selection. Download
+Windows x64 **v3.7.60** is this fork's current release, with screenshot editing,
+automatic scrolling capture, lightweight text selection, image pinning/zoom,
+on-demand local speech and verified Logitech receiver-slot selection. Download
 `Mouser-Windows.zip` from [Releases](https://github.com/meiyoutou/Mouser-G502/releases/latest).
-Keep the complete `Mouser` folder. Speech models are not included or downloaded
+Keep `Mouser.exe`, `_internal`, and the optional `文字选择组件` folder together.
+The portable ZIP contains runtime files and required licenses only, without
+test pictures, usage notes or personal data. Speech models are not included or downloaded
 unless explicitly requested in the Voice page. See [Chinese instructions](README_CN.md)
 for model recommendations, configuration migration and known limitations.
 This release does not include new macOS/Linux packages.
+
+Long capture ✓ opens the editor. Ctrl+wheel zooms, plain wheel scrolls, and
+More → Text selection prepares selectable text locally when requested.
+Recognition can contain errors. The updater uses this fork's releases, not upstream.
 
 > Unofficial G502-series fork.
 >

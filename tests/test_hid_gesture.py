@@ -11,6 +11,27 @@ from unittest.mock import Mock, patch
 from core import hid_gesture
 
 
+_module_isolation = None
+_module_environment = None
+
+
+def setUpModule():
+    # Discovery tests mock the transport, but some successful paths persist
+    # last_device.json. Never put those synthetic devices in the user's cache.
+    global _module_isolation, _module_environment
+    _module_isolation = tempfile.TemporaryDirectory(prefix="mouser-hid-tests-")
+    _module_environment = patch.dict(os.environ, {
+        "APPDATA": _module_isolation.name,
+        "XDG_CONFIG_HOME": _module_isolation.name,
+    })
+    _module_environment.start()
+
+
+def tearDownModule():
+    _module_environment.stop()
+    _module_isolation.cleanup()
+
+
 class HidModuleImportTests(unittest.TestCase):
     def tearDown(self):
         importlib.reload(hid_gesture)

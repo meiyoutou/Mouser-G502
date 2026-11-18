@@ -318,6 +318,7 @@ DEFAULT_CONFIG = {
         "start_minimized": True,
         "start_at_login": False,
         "hscroll_threshold": 0.1,
+        "hscroll_threshold_scale_version": 2,
         "invert_hscroll": False,  # swap horizontal scroll directions
         "invert_vscroll": False,  # swap vertical scroll directions
         "dpi": 1000,              # pointer speed / DPI setting
@@ -342,6 +343,7 @@ DEFAULT_CONFIG = {
         "haptic_dedup": True,       # True = deduplicate pulses within 100ms window
         "ignore_trackpad": True,
         "screenshot_directory": "",
+        "screenshot_editor_enabled": True,
         "speech_to_text": dict(SPEECH_DEFAULTS),
         "wheel_divert": WHEEL_DIVERT_DEFAULT,
         "check_for_updates": True,
@@ -1001,8 +1003,9 @@ def _migrate(cfg):
         # Actions Ring overlay hold threshold.
         settings.setdefault("actions_ring_hold_ms", 250)
         # hscroll_threshold moved from the old integer default (1) to 0.1.
-        if settings.get("hscroll_threshold") == 1:
+        if settings.get("hscroll_threshold") == 1 and settings.get("hscroll_threshold_scale_version", 1) < 2:
             settings["hscroll_threshold"] = 0.1
+        settings["hscroll_threshold_scale_version"] = 2
         # The Actions Ring overlay lived behind a transient "actions_ring_mode"
         # setting on some pre-release builds; fold it into the actions_ring
         # mapping. Ring activation lives on the Sense Panel (config key

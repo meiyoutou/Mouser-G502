@@ -10,6 +10,8 @@ Item {
     readonly property var theme: Theme.palette(uiState.darkMode)
     property var s: lm.strings
     readonly property var cfg: backend.speechSettings
+    readonly property bool hasUnsavedDraft: words.text !== cfg.custom_words
+                                           || corrections.text !== cfg.corrections
     readonly property var runtime: backend.speechRuntime
     readonly property var engineOptions: [
         {label: s["speech.engine_auto"], value: "auto"},
@@ -62,6 +64,7 @@ Item {
             }
             Label { text: s["speech.optional_title"]; color: theme.textPrimary; font.bold: true; font.pixelSize: 19 }
             Label { text: s["speech.optional_help"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textSecondary }
+            Label { text: s["speech.local_help"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textSecondary }
             Label { text: s["speech.memory_help"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textSecondary }
             Label { visible: !backend.speechDownloadSupported; text: s["speech.error_platform"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#e59564" }
             Repeater {
@@ -168,10 +171,19 @@ Item {
                 }
                 Label { text: s["speech.pause_duration"]; color: theme.textPrimary }
                 SpinBox {
-                    from: 4; to: 30; stepSize: 1
+                    objectName: "speechPauseThreshold"
+                    from: 1; to: 30; stepSize: 1
                     value: Math.round(cfg.silence_stop_seconds * 10)
                     textFromValue: function(value, locale) { return (value / 10).toFixed(1) + " s" }
                     onValueModified: backend.setSpeechSetting("silence_stop_seconds", value / 10)
+                }
+                Label { text: s["speech.vad_threshold"]; color: theme.textPrimary }
+                SpinBox {
+                    objectName: "speechVadThreshold"
+                    from: 1; to: 99; stepSize: 1
+                    value: Math.round(cfg.vad_threshold * 100)
+                    textFromValue: function(value, locale) { return value + "%" }
+                    onValueModified: backend.setSpeechSetting("vad_threshold", value / 100)
                 }
                 Label { text: s["speech.audio_level"]; color: theme.textPrimary }
                 ProgressBar {
@@ -184,6 +196,7 @@ Item {
                 Label { text: s["speech.auto_input"]; color: theme.textPrimary }
                 Switch { checked: cfg.auto_paste; onToggled: backend.setSpeechSetting("auto_paste", checked) }
             }
+            Label { text: s["speech.threshold_help"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.textSecondary }
             RowLayout {
                 Layout.fillWidth: true
                 visible: cfg.engine === "faster_whisper"
@@ -206,6 +219,7 @@ Item {
             Label { text: s["speech.words_help"]; color: theme.textSecondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             TextArea {
                 id: words
+                objectName: "speechVocabularyDraft"
                 Layout.fillWidth: true
                 Layout.preferredHeight: 90
                 text: cfg.custom_words
@@ -217,6 +231,7 @@ Item {
             Label { text: s["speech.corrections_help"]; color: theme.textSecondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
             TextArea {
                 id: corrections
+                objectName: "speechCorrectionsDraft"
                 Layout.fillWidth: true
                 Layout.preferredHeight: 90
                 text: cfg.corrections

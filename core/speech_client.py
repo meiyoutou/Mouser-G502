@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 
+from core.compute_limits import child_environment
 from core.speech_components import runtime_executable, verify_executable, ComponentError
 from core.speech_service import PROTOCOL, MAX_LINE, freeze, pipe_lines
 _SPAWN_LOCK = threading.Lock()
@@ -74,7 +75,7 @@ class SpeechClient:
     def _start(self):
         if self.process is not None and self.process.poll() is None:
             return
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYINSTALLER_RESET_ENVIRONMENT": "1"}
+        env = {**child_environment(), "PYTHONIOENCODING": "utf-8", "PYINSTALLER_RESET_ENVIRONMENT": "1"}
         # Do not inherit the main PyInstaller app's DLL search override when
         # launching an independently packaged runtime (its own bootloader resets it).
         command = self.command or helper_command()

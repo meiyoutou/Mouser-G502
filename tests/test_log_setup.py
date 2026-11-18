@@ -134,8 +134,73 @@ class SetupLoggingTests(unittest.TestCase):
             h for h in logging.root.handlers
             if isinstance(h, logging.handlers.RotatingFileHandler)
         )
-        self.assertEqual(rotating.maxBytes, 5 * 1024 * 1024)
-        self.assertEqual(rotating.backupCount, 5)
+        self.assertEqual(rotating.maxBytes, 1024 * 1024)
+        self.assertEqual(rotating.backupCount, 3)
+
+    def test_default_info_and_existing_debug_switch(self):
+        with patch.object(log_setup, "_get_log_dir", return_value=self.tmp), \
+                patch.dict(os.environ, {"MOUSER_LOG_LEVEL": ""}):
+            log_setup.setup_logging()
+            self.assertEqual(logging.root.level, logging.INFO)
+            log_setup.set_debug_logging(True)
+            self.assertEqual(logging.root.level, logging.DEBUG)
+            log_setup.set_debug_logging(False)
+            self.assertEqual(logging.root.level, logging.INFO)
+            logging.debug("debug-not-written")
+            logging.info("info-written")
+        with open(os.path.join(self.tmp, "mouser.log"), encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertNotIn("debug-not-written", content)
+        self.assertIn("info-written", content)
+
+    def test_debug_env_override_still_available(self):
+        with patch.object(log_setup, "_get_log_dir", return_value=self.tmp), \
+                patch.dict(os.environ, {"MOUSER_LOG_LEVEL": "DEBUG"}):
+            log_setup.setup_logging()
+            self.assertEqual(logging.root.level, logging.DEBUG)
+            log_setup.set_debug_logging(False)
+            self.assertEqual(logging.root.level, logging.DEBUG)
+
+    def test_does_not_change_embedded_host_logging(self):
+        logging.root.addHandler(logging.NullHandler())
+        logging.root.setLevel(logging.WARNING)
+        self.assertEqual(log_setup.setup_logging(), "")
+        log_setup.set_debug_logging(True)
+        self.assertEqual(logging.root.level, logging.WARNING)
+
+    def test_rollover_preserves_only_configured_backup_count(self):
+        with patch.object(log_setup, "_get_log_dir", return_value=self.tmp), \
+                patch.object(log_setup, "LOG_MAX_BYTES", 128):
+            log_setup.setup_logging()
+        for _ in range(40):
+            logging.info("bounded event " + "x" * 50)
+        names = [name for name in os.listdir(self.tmp) if name.startswith("mouser.log")]
+        self.assertEqual(len(names), 4)
+        self.assertTrue(all(os.path.getsize(os.path.join(self.tmp, name)) <= 128 for name in names))
+
+
+class SpeechEventLogTests(unittest.TestCase):
+    def tearDown(self):
+        logger = logging.getLogger("mouser.speech.events")
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
+
+    def test_event_log_is_bounded_and_does_not_propagate(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict(os.environ, {"APPDATA": folder}), \
+                patch.object(log_setup, "SPEECH_LOG_MAX_BYTES", 128):
+            try:
+                for _ in range(40):
+                    log_setup.log_speech_event("STATUS recording " + "x" * 40)
+                logger = logging.getLogger("mouser.speech.events")
+                self.assertFalse(logger.propagate)
+                self.assertEqual(len(logger.handlers), 1)
+                names = os.listdir(os.path.join(folder, "Mouser"))
+                self.assertEqual(len(names), 3)
+                self.assertTrue(all(os.path.getsize(os.path.join(folder, "Mouser", n)) <= 128 for n in names))
+            finally:
+                self.tearDown()  # Release Windows file locks before temp cleanup.
 
 
 class StreamToLoggerTests(unittest.TestCase):

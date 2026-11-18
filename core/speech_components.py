@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import platform
@@ -21,10 +22,11 @@ from functools import lru_cache
 from core.speech_models import bundle_roots, model_directory, install_pack, _safe_name, _check_parent
 
 PROTOCOL = 1
-RELEASE_TAG = "speech-components-v1-win64"
+RELEASE_TAG = "speech-components-v2-win64"
 RELEASE_URL = "https://github.com/meiyoutou/Mouser-G502/releases/download/" + RELEASE_TAG
 MAX_EXPANDED_BYTES = 800 * 1024 * 1024
 _INSTALL_LOCK = threading.Lock()
+_LOG = logging.getLogger(__name__)
 
 
 class ComponentError(ValueError):
@@ -50,7 +52,7 @@ def assets_catalog():
 
 
 def runtime_directory():
-    return model_directory().parent / "speech_runtime" / "v1-win64"
+    return model_directory().parent / "speech_runtime" / "v2-win64"
 
 
 def runtime_executable():
@@ -96,6 +98,47 @@ class _HTTPSRedirects(urllib.request.HTTPRedirectHandler):
         if urllib.parse.urlsplit(newurl).scheme != "https":
             raise ComponentError("url", "Non-HTTPS download redirect rejected")
         return super().redirect_request(request, fp, code, message, headers, newurl)
+
+
+def local_archive_directories():
+    """Explicit, adjacent component folders only; never scan private files."""
+    base = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    return [root / name for root in (base, base.parent) for name in ("可选语音组件", "Speech-components")]
+
+
+def local_archive(asset, roots=None, *, cancel_event=None):
+    name = asset["name"]
+    _safe_name(name)
+    if "/" in name:
+        raise ComponentError("catalog", "Invalid speech archive name")
+    for root in local_archive_directories() if roots is None else roots:
+        candidate = Path(root) / name
+        if not candidate.is_file():
+            continue
+        cancelled(cancel_event)
+        if candidate.stat().st_size != asset["size"]:
+            raise ComponentError("size", "Local speech archive size mismatch")
+        with candidate.open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        cancelled(cancel_event)
+        if digest != asset["sha256"]:
+            raise ComponentError("checksum", "Local speech archive checksum mismatch")
+        return candidate
+    return None
+
+
+def network_failure_reason(error):
+    """Small diagnostic codes without URL, credentials or proxy contents."""
+    if isinstance(error, urllib.error.HTTPError):
+        return "HTTP_" + str(error.code)
+    reason = getattr(error, "reason", error)
+    if isinstance(reason, TimeoutError):
+        return "TIMEOUT"
+    if type(reason).__name__ in {"SSLError", "SSLCertVerificationError"}:
+        return "TLS_" + type(reason).__name__
+    if isinstance(reason, OSError) and reason.errno is not None:
+        return "OS_ERROR_" + str(reason.errno)
+    return type(reason).__name__
 
 
 def download(asset, destination, *, cancel_event=None, progress=None, opener=None):
@@ -146,6 +189,8 @@ def download(asset, destination, *, cancel_event=None, progress=None, opener=Non
             cancelled(cancel_event)
             return destination
         except (OSError, urllib.error.URLError, ComponentError) as error:
+            reason = network_failure_reason(error)
+            _LOG.warning("Speech download %s attempt=%d failed reason=%s", asset["name"], attempt + 1, reason)
             destination.unlink(missing_ok=True)
             cancelled(cancel_event)
             if isinstance(error, ComponentError) and error.code not in {"network", "checksum"}:
@@ -153,7 +198,7 @@ def download(asset, destination, *, cancel_event=None, progress=None, opener=Non
             if attempt == 2 or time.monotonic() > deadline:
                 if isinstance(error, ComponentError):
                     raise
-                raise ComponentError("network", "Download failed; check the network and retry") from error
+                raise ComponentError("network", reason) from error
             if cancel_event is not None:
                 cancel_event.wait(attempt + 1)
             else:
@@ -215,7 +260,7 @@ def install_runtime(archive, asset, *, destination=None, cancel_event=None):
     return root / "MouserSpeech.exe"
 
 
-def install_selection(pack_id, with_preview, *, cancel_event=None, progress=None, phase=None, assets=None, opener=None):
+def install_selection(pack_id, with_preview, *, cancel_event=None, progress=None, phase=None, assets=None, opener=None, archive_roots=None):
     from core.speech_models import CATALOG, catalog_status
     if pack_id not in CATALOG:
         raise ComponentError("catalog", "Unknown speech model")
@@ -237,10 +282,17 @@ def install_selection(pack_id, with_preview, *, cancel_event=None, progress=None
             cancelled(cancel_event)
             asset = assets[item]
             if phase:
-                phase("download", item)
+                phase("local", item)
+            archive = local_archive(asset, archive_roots, cancel_event=cancel_event)
             with tempfile.TemporaryDirectory(prefix=".speech-download-", dir=root) as directory:
-                archive = download(asset, Path(directory) / asset["name"], cancel_event=cancel_event,
-                    opener=opener, progress=lambda done, total: progress(int((index + .8 * done / total) * 100 / len(pending))) if progress else None)
+                if archive is None:
+                    if asset.get("available_online", True) is False:
+                        raise ComponentError("local", "This local test runtime must be supplied in the adjacent component folder")
+                    if phase:
+                        phase("download", item)
+                    archive = download(asset, Path(directory) / asset["name"], cancel_event=cancel_event,
+                        opener=opener, progress=lambda done, total: progress(int((index + .8 * done / total) * 100 / len(pending))) if progress else None)
+                _LOG.info("Speech component %s selected source=%s", item, "local" if archive.parent != Path(directory) else "download")
                 if phase:
                     phase("install", item)
                 cancelled(cancel_event)

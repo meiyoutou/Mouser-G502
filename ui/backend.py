@@ -5,6 +5,8 @@ Exposes properties, signals, and slots for two-way data binding.
 
 import os
 import json
+import math
+import logging
 import re
 import shutil
 import sys
@@ -324,6 +326,8 @@ class Backend(QObject):
         self._debug_events_enabled = bool(
             self._cfg.get("settings", {}).get("debug_mode", False)
         )
+        from core.log_setup import set_debug_logging
+        set_debug_logging(self._debug_events_enabled)
         self._record_mode = False
         self._gesture_records = []
         self._gesture_active = False
@@ -363,8 +367,7 @@ class Backend(QObject):
         self._device_inventory_timer = QTimer(self)
         self._device_inventory_timer.setInterval(500)
         self._device_inventory_timer.timeout.connect(self._refreshDeviceInventorySnapshot)
-        if engine and sys.platform.startswith("win"):
-            self._device_inventory_timer.start()
+        self._frontend_visible = False
         self.settingsChanged.connect(self.deviceInventoryChanged.emit)
         self.settingsChanged.connect(self.deviceInfoChanged.emit)
         self.settingsChanged.connect(self.speechSettingsChanged.emit)
@@ -566,6 +569,8 @@ class Backend(QObject):
     def speechInstallMessage(self):
         from core.speech_models import CATALOG
         phase, item = getattr(self, "_speech_install_phase", ("idle", ""))
+        if phase == "failed" and getattr(self, "_speech_install_error", ""):
+            return self._tr("speech.install_failed", error=self._speech_install_error)
         name = self._tr("speech.component") if item == "runtime" else CATALOG.get(item, {}).get("name", "")
         return self._tr("speech.phase_" + phase, name=name)
 
@@ -590,6 +595,7 @@ class Backend(QObject):
         self._speech_model_installing = True
         self._speech_model_install_progress = 0
         self._speech_install_phase = ("download", "runtime")
+        self._speech_install_error = ""
         self._speech_install_cancel = threading.Event()
         self.speechSettingsChanged.emit()
         def install():
@@ -600,6 +606,7 @@ class Backend(QObject):
                 result = {"ok": True, "selection": pack_id}
             except Exception as error:
                 result = {"ok": False, "error": str(error), "code": getattr(error, "code", str(error))}
+                logging.getLogger(__name__).error("Speech selection installation failed code=%s reason=%s", result["code"], result["error"])
             self._speechPackFinished.emit(result)
         threading.Thread(target=install, name="MouserSpeechDownload", daemon=True).start()
 
@@ -634,8 +641,11 @@ class Backend(QObject):
                 self._speech_install_phase = ("cancelled", "")
                 self._emit_status_key("speech.phase_cancelled")
             else:
-                known = {"network", "checksum", "size", "disk", "platform", "catalog", "url", "archive", "busy"}
+                known = {"network", "checksum", "size", "disk", "platform", "catalog", "url", "archive", "busy", "local"}
                 error = self._tr("speech.error_" + code) if code in known else result.get("error", "")
+                if code == "network" and result.get("error"):
+                    error += " (" + result["error"] + ")"
+                self._speech_install_error = error
                 self._emit_status_key("speech.install_failed", "Model installation failed: {error}", error=error)
             self.speechSettingsChanged.emit()
 
@@ -659,6 +669,8 @@ class Backend(QObject):
         self._speech_model_installing = True
         self._speech_install_cancel = None  # Manual ZIP installation is atomic.
         self._speech_model_install_progress = 0
+        self._speech_install_error = ""
+        self._speech_install_phase = ("install", "")
         self.speechSettingsChanged.emit()
         def install():
             try:
@@ -666,6 +678,7 @@ class Backend(QObject):
                 result = {"ok": True}
             except Exception as error:
                 result = {"ok": False, "error": str(error)}
+                logging.getLogger(__name__).error("Speech offline installation failed reason=%s", result["error"])
             self._speechPackFinished.emit(result)
         threading.Thread(target=install, name="MouserModelInstall", daemon=True).start()
 
@@ -791,7 +804,7 @@ class Backend(QObject):
     def setSpeechSetting(self, key, value):
         from core.speech_session import SPEECH_DEFAULTS
         allowed = {"engine", "model", "language", "microphone", "preview_enabled", "auto_paste",
-                   "silence_stop_seconds", "custom_words", "corrections", "corrections_enabled", "model_path"}
+                   "silence_stop_seconds", "vad_threshold", "custom_words", "corrections", "corrections_enabled", "model_path"}
         if key not in allowed:
             return
         enums = {"engine": {"auto", "sense_voice", "sherpa_onnx_streaming", "faster_whisper"},
@@ -799,9 +812,13 @@ class Backend(QObject):
                  "language": {"zh", "en", "yue", "ja", "ko", "auto", "follow_ui"}}
         if key in enums and value not in enums[key]:
             return
-        if key == "silence_stop_seconds":
+        if key in {"silence_stop_seconds", "vad_threshold"}:
             try:
-                value = max(0.4, min(3.0, float(value)))
+                value = float(value)
+                if not math.isfinite(value):
+                    return
+                lower, upper = (0.1, 3.0) if key == "silence_stop_seconds" else (0.01, 0.99)
+                value = max(lower, min(upper, value))
             except (TypeError, ValueError):
                 return
         elif isinstance(SPEECH_DEFAULTS.get(key), bool):
@@ -1407,7 +1424,7 @@ class Backend(QObject):
 
     @Slot(int)
     def setActionsRingHoldMs(self, ms):
-        ms = max(100, min(500, ms))
+        ms = max(1, min(500, ms))
         self._cfg.setdefault("settings", {})["actions_ring_hold_ms"] = ms
         save_config(self._cfg)
         self.settingsChanged.emit()
@@ -1620,6 +1637,24 @@ class Backend(QObject):
     def screenshotDirectory(self):
         return self._configured_screenshot_directory()
 
+    @Property(bool, notify=settingsChanged)
+    def screenshotEditorEnabled(self):
+        return bool(self._cfg.get("settings", {}).get("screenshot_editor_enabled", True))
+
+    @Slot(bool)
+    def setScreenshotEditorEnabled(self, enabled):
+        enabled = bool(enabled)
+        if enabled == self.screenshotEditorEnabled:
+            return
+        previous = self.screenshotEditorEnabled
+        self._cfg.setdefault("settings", {})["screenshot_editor_enabled"] = enabled
+        try:
+            save_config(self._cfg)
+        except Exception:
+            self._cfg["settings"]["screenshot_editor_enabled"] = previous
+            raise
+        self.settingsChanged.emit()
+
     @Property(str, notify=settingsChanged)
     def screenshotDirectoryLabel(self):
         return self._configured_screenshot_directory()
@@ -1730,6 +1765,17 @@ class Backend(QObject):
         if isinstance(snapshot, dict) and snapshot != self._device_inventory_snapshot:
             self._device_inventory_snapshot = snapshot
             self.deviceInventoryChanged.emit()
+
+    def set_frontend_visible(self, visible):
+        """Only UI inventory/age refresh; never stop device discovery or mappings."""
+        self._frontend_visible = bool(visible)
+        if visible:
+            self._refreshDeviceInventorySnapshot()
+            self._emitBatteryAgeTick()
+        if visible and self._engine and sys.platform.startswith("win"):
+            self._device_inventory_timer.start()
+        else:
+            self._device_inventory_timer.stop()
 
     @Property(list, notify=deviceInventoryChanged)
     def logitechDeviceChoices(self):
@@ -2525,6 +2571,8 @@ class Backend(QObject):
         self._debug_events_enabled = bool(
             self._cfg.get("settings", {}).get("debug_mode", False)
         )
+        from core.log_setup import set_debug_logging
+        set_debug_logging(self._debug_events_enabled)
         if self._engine:
             self._engine.cfg = self._cfg
             if hasattr(self._engine, "reload_mappings"):
@@ -2910,6 +2958,31 @@ class Backend(QObject):
     def setScrollForce(self, scroll_force):
         self._applySmartShift(scroll_force=scroll_force)
 
+    @Property(int, notify=settingsChanged)
+    def hscrollThresholdPercent(self):
+        return max(1, min(100, round(float(self._cfg.get("settings", {}).get("hscroll_threshold", 0.1)) * 100)))
+
+    @Slot(int)
+    def setHscrollThresholdPercent(self, value):
+        self._cfg.setdefault("settings", {})["hscroll_threshold"] = max(1, min(100, int(value))) / 100.0
+        self._cfg["settings"]["hscroll_threshold_scale_version"] = 2
+        save_config(self._cfg)
+        if self._engine:
+            self._engine.reload_mappings()
+        self.settingsChanged.emit()
+
+    @Property(int, notify=settingsChanged)
+    def hscrollRepeatMs(self):
+        return int(self._cfg.get("settings", {}).get("hscroll_action_cooldown_ms", 350))
+
+    @Slot(int)
+    def setHscrollRepeatMs(self, value):
+        self._cfg.setdefault("settings", {})["hscroll_action_cooldown_ms"] = max(1, min(1000, int(value)))
+        save_config(self._cfg)
+        if self._engine:
+            self._engine.reload_mappings()
+        self.settingsChanged.emit()
+
     @Slot(bool)
     def setInvertVScroll(self, value):
         value = bool(value)
@@ -2942,7 +3015,7 @@ class Backend(QObject):
 
     @Slot(int)
     def setGestureThreshold(self, value):
-        snapped = max(20, min(400, int(round(value / 5.0) * 5)))
+        snapped = max(1, min(400, int(value)))
         self._cfg.setdefault("settings", {})["gesture_threshold"] = snapped
         save_config(self._cfg)
         if self._engine:
@@ -3024,6 +3097,8 @@ class Backend(QObject):
     @Slot(bool)
     def setDebugMode(self, value):
         enabled = bool(value)
+        from core.log_setup import set_debug_logging
+        set_debug_logging(enabled)
         self._cfg.setdefault("settings", {})["debug_mode"] = enabled
         save_config(self._cfg)
         self._debug_events_enabled = enabled

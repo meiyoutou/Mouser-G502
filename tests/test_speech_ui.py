@@ -49,6 +49,7 @@ def _smoke():
     root_dir = Path(os.environ.get("MOUSER_TEST_QML_ROOT", Path(__file__).resolve().parents[1]))
     fake_engine = _FakeEngine()
     fake_engine.haptic_supported = False
+    fake_engine.smart_shift_force_supported = False
     with patch("ui.backend.load_config", return_value=cfg), patch("ui.backend.save_config"), patch("ui.backend.supports_login_startup", return_value=False):
         backend = Backend(engine=fake_engine, root_dir=str(root_dir))
     locale, state, qml = LocaleManager("zh_CN"), UiState(app), QQmlApplicationEngine()
@@ -98,6 +99,10 @@ def _smoke():
     assert all(not item["installed"] for item in backend.speechModels)
     assert "优先" in page.property("s")["speech.recommend_sensevoice"]
     assert window.findChild(QObject, "speechTestInput") is not None
+    for name in ("speechPauseThreshold", "speechVadThreshold"):
+        control = window.findChild(QObject, name)
+        assert control and control.property("from") == 1, name
+        assert control.property("stepSize") == 1, name
     for language in ("zh_CN", "en", "zh_TW"):
         locale.setLanguage(language)
         with patch("ui.backend.save_config"):
@@ -130,6 +135,26 @@ def _smoke():
         window.setProperty("width", 1100)
         settle()
         assert window.grabWindow().save(str(Path(screenshot_dir) / "speech-settings.png"))
+    window.setProperty("currentPage", 1)
+    settle()
+    screenshot_switch = window.findChild(QObject, "screenshotEditorSwitch")
+    assert screenshot_switch is not None
+    assert screenshot_switch.property("checked") is True
+    with patch("ui.backend.save_config"):
+        backend.setScreenshotEditorEnabled(False)
+        settle()
+        assert screenshot_switch.property("checked") is False
+        backend.setScreenshotEditorEnabled(True)
+    for name in ("hscrollTriggerThreshold", "hscrollRepeatThreshold"):
+        control = window.findChild(QObject, name)
+        assert control and control.property("from") == 1, name
+        assert control.property("stepSize") == 1, name
+        assert control.property("width") > 50, name
+    if screenshot_dir:
+        assert window.grabWindow().save(str(Path(screenshot_dir) / "scroll-settings.png"))
+    bad = [message for message in warnings if any(marker in message for marker in
+           ("ReferenceError", "TypeError", "Unable to assign", "Binding loop", "Cannot assign to"))]
+    assert not bad, bad
     print("SPEECH_UI_SMOKE=PASS")
     window.close()
     qml.deleteLater()

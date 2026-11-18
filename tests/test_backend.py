@@ -509,7 +509,7 @@ class BackendDeviceLayoutTests(unittest.TestCase):
 
         fetch_manifest.assert_called_once_with(
             "v3.7.0",
-            repo="TomBadash/Mouser",
+            repo="meiyoutou/Mouser-G502",
             highest_trusted_build=30699,
         )
         self.assertEqual(backend.updateInstallStatus, "manual_fallback")
@@ -1276,6 +1276,20 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertEqual(backend.screenshotDirectory, "")
         self.assertEqual(backend.screenshotDirectoryLabel, "")
         self.assertFalse(backend.hasCustomScreenshotDirectory)
+
+    def test_screenshot_editor_toggle_preserves_mappings_and_persists(self):
+        backend = self._make_backend()
+        before = copy.deepcopy(backend._cfg["profiles"])
+        self.assertTrue(backend.screenshotEditorEnabled)
+        with patch("ui.backend.save_config") as saved:
+            backend.setScreenshotEditorEnabled(False)
+            saved.assert_called_once_with(backend._cfg)
+        self.assertFalse(backend.screenshotEditorEnabled)
+        self.assertEqual(backend._cfg["profiles"], before)
+        with patch("ui.backend.save_config", side_effect=OSError("test failure")):
+            with self.assertRaises(OSError):
+                backend.setScreenshotEditorEnabled(True)
+        self.assertFalse(backend.screenshotEditorEnabled)
 
     def test_next_screenshot_file_path_uses_custom_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

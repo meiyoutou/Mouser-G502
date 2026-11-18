@@ -11,6 +11,10 @@ import re
 import time
 
 from core.logi_devices import resolve_device
+from core.hidpp_transaction import (
+    MAX_REPLY_POLLS, REPLY_POLL_INTERVAL, next_discovery_id,
+    next_ping_nonce, reply_poll_packet,
+)
 
 RECEIVER_PIDS = {0xC52B, 0xC532, 0xC534, 0xC539, 0xC53A, 0xC53F, 0xC548}
 HIDPP2_KINDS = {0: "keyboard", 1: "remote", 2: "numpad", 3: "mouse",
@@ -127,7 +131,7 @@ class IdentityProbe:
 
     SW = 0x0D  # distinct from runtime requests
 
-    def __init__(self, handle, on_unmatched=None, cancelled=None, timeout_ms=220, short_handle=None):
+    def __init__(self, handle, on_unmatched=None, cancelled=None, timeout_ms=700, short_handle=None):
         self.handle = handle
         self.short_handle = short_handle
         self.on_unmatched = on_unmatched
@@ -136,7 +140,7 @@ class IdentityProbe:
         self.last_error = None
         self.last_error_protocol = None
 
-    def exchange(self, slot, sub, address, params, *, register=False):
+    def exchange(self, slot, sub, address, params, *, register=False, validator=None):
         self.last_error = None
         self.last_error_protocol = None
         if self.cancelled():
@@ -147,7 +151,15 @@ class IdentityProbe:
         tx = (self.short_handle or self.handle) if register else self.handle
         tx.write(packet[:size])
         deadline = time.monotonic() + self.timeout_ms / 1000
+        next_poll = time.monotonic() + REPLY_POLL_INTERVAL
+        polls = 0
         while time.monotonic() < deadline and not self.cancelled():
+            if not register and polls < MAX_REPLY_POLLS and time.monotonic() >= next_poll:
+                # Do not repeat the original request. A read-only ping releases
+                # delayed radio replies without duplicating any device action.
+                self.handle.write(reply_poll_packet(slot))
+                polls += 1
+                next_poll = time.monotonic() + REPLY_POLL_INTERVAL
             remaining = max(1, int((deadline - time.monotonic()) * 1000))
             raw = list(self.short_handle.read(64, 1) or []) if self.short_handle else []
             if not raw:
@@ -160,7 +172,8 @@ class IdentityProbe:
             if dev == slot:
                 if rsub == sub and raddr == address:
                     if not register or (payload and payload[0] == params[0]):
-                        return payload
+                        if validator is None or validator(payload):
+                            return payload
                 if rsub == 0x8F and len(payload) >= 2 and raddr == sub and payload[0] == address:
                     self.last_error = payload[1]
                     self.last_error_protocol = "hidpp1"
@@ -173,8 +186,9 @@ class IdentityProbe:
                 self.on_unmatched(raw)
         return None
 
-    def request(self, slot, feature, func=0, params=()):
-        return self.exchange(slot, feature, (func << 4) | self.SW, list(params))
+    def request(self, slot, feature, func=0, params=(), *, validator=None):
+        return self.exchange(slot, feature, (func << 4) | next_discovery_id(),
+                             list(params), validator=validator)
 
     def feature(self, slot, feature_id):
         result = self.request(slot, 0, 0, [feature_id >> 8, feature_id & 0xFF, 0])
@@ -210,8 +224,10 @@ class IdentityProbe:
         serial = paired.get("serial", "") if receiver else _serial(candidate.get("serial_number"))
         if kind not in ("unknown", "mouse", "trackball"):
             return DiscoveredDevice(candidate, slot, name, kind, serial, status="paired", wpid=paired.get("wpid", ""))
-        ping = self.request(slot, 0, 1, [0, 0, 0x5A])
-        online = bool(ping and len(ping) >= 3 and ping[2] == 0x5A)
+        nonce = next_ping_nonce()
+        ping = self.request(slot, 0, 1, [0, 0, nonce],
+                            validator=lambda p: len(p) >= 3 and p[2] == nonce)
+        online = bool(ping and len(ping) >= 3 and ping[2] == nonce)
         protocol = "hidpp2" if online else ""
         # A matching HID++ 1.0 invalid-sub-id error proves the slot is awake.
         if not online and self.last_error == 1 and self.last_error_protocol == "hidpp1":

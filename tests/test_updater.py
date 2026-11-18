@@ -63,7 +63,7 @@ class UpdaterTests(unittest.TestCase):
             ),
         )
         request = mocked.call_args.args[0]
-        self.assertIn("TomBadash/Mouser", request.full_url)
+        self.assertIn("meiyoutou/Mouser-G502", request.full_url)
         self.assertEqual(request.get_header("User-agent"), f"Mouser/{APP_VERSION}")
 
     def test_check_latest_release_accepts_utf8_bom_response(self):

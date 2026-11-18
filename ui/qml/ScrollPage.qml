@@ -607,6 +607,43 @@ Item {
 
             Item { width: 1; height: 16 }
 
+            Rectangle {
+                width: parent.width - 72
+                anchors.horizontalCenter: parent.horizontalCenter
+                implicitHeight: horizontalSensitivity.implicitHeight + 40
+                radius: Theme.radius
+                color: scrollPage.theme.bgCard
+                ColumnLayout {
+                    id: horizontalSensitivity
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+                    Label { text: s["scroll.hscroll_threshold_title"]; color: scrollPage.theme.textPrimary; font.bold: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: s["scroll.hscroll_threshold"]; color: scrollPage.theme.textPrimary; Layout.fillWidth: true }
+                        SpinBox {
+                            objectName: "hscrollTriggerThreshold"
+                            from: 1; to: 100; stepSize: 1
+                            value: backend.hscrollThresholdPercent
+                            textFromValue: function(value, locale) { return value + "%" }
+                            onValueModified: backend.setHscrollThresholdPercent(value)
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: s["scroll.hscroll_repeat"]; color: scrollPage.theme.textPrimary; Layout.fillWidth: true }
+                        SpinBox {
+                            objectName: "hscrollRepeatThreshold"
+                            from: 1; to: 1000; stepSize: 1
+                            value: backend.hscrollRepeatMs
+                            textFromValue: function(value, locale) { return value + " ms" }
+                            onValueModified: backend.setHscrollRepeatMs(value)
+                        }
+                    }
+                    Label { text: s["scroll.hscroll_threshold_help"]; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: scrollPage.theme.textSecondary }
+                }
+            }
+            Item { width: 1; height: 16 }
+
             // ── Appearance ────────────────────────────────────────
             Rectangle {
                 width: parent.width - 72
@@ -1157,6 +1194,33 @@ Item {
                         color: scrollPage.theme.textSecondary
                         wrapMode: Text.WordWrap
                         width: parent.width
+                    }
+
+                    RowLayout {
+                        visible: backend.isWindows
+                        width: parent.width
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: s["screenshot.mode_title"]
+                                color: scrollPage.theme.textPrimary
+                                font.pixelSize: 13
+                                font.family: uiState.fontFamily
+                            }
+                            Text {
+                                text: s["screenshot.mode_desc"]
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: scrollPage.theme.textSecondary
+                                font.pixelSize: 12
+                                font.family: uiState.fontFamily
+                            }
+                        }
+                        Switch {
+                            objectName: "screenshotEditorSwitch"
+                            checked: backend.screenshotEditorEnabled
+                            onToggled: backend.setScreenshotEditorEnabled(checked)
+                        }
                     }
 
                     Rectangle {
