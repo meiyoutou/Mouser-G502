@@ -526,16 +526,18 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(sent.pixelColor(40, 50), QColor("black"))
             self.assertEqual(sent.size(), QSize(200, 180))
 
-    def test_missing_text_selection_never_opens_installer(self):
+    def test_missing_text_selection_offers_component_manager_without_recognizing(self):
         s = self.make()
         self.select(s)
         from core import text_selection
         from ui.screenshot_text_selection import TextSelectionController
         with patch.object(text_selection, "checked_runtime", return_value=None), \
+                patch("ui.screenshot_components.ensure_component", return_value=False) as manager, \
                 patch.object(QMessageBox, "exec") as dialog, \
                 patch.object(TextSelectionController, "start") as start:
             s._invoke("text_select")
             dialog.assert_not_called()
+            manager.assert_called_once()
             start.assert_not_called()
             self.assertIsNone(s._selection_worker)
             self.assertIn("文字选择组件", s.hint.text())

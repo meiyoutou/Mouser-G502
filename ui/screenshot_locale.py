@@ -298,6 +298,13 @@ _TW.update({
     "view_navigation": "滾輪上下瀏覽 · Ctrl+滾輪以滑鼠所在位置縮放",
 })
 
+_EN["components_manage"] = "Screenshot components · Long capture / Text selection"
+_ZH["components_manage"] = "截图组件 · 长截图 / 文字选择"
+_TW["components_manage"] = "截圖元件 · 長截圖 / 文字選取"
+_EN["text_select_missing"] = "Install or repair Text selection in Screenshot components. No image is uploaded."
+_ZH["text_select_missing"] = "请在“截图组件”中安装或修复文字选择组件，不会上传图片。"
+_TW["text_select_missing"] = "請在「截圖元件」中安裝或修復文字選取元件，不會上傳圖片。"
+
 SCREENSHOT_TRANSLATIONS = {
     lang: {"screenshot." + key: value for key, value in strings.items()}
     for lang, strings in (("en", _EN), ("zh_CN", _ZH), ("zh_TW", _TW))

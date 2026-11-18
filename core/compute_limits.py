@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sys
 import threading
 
 OPENBLAS_THREADS = 1
@@ -42,6 +43,9 @@ def registration_libraries():
         previous = {name: os.environ.get(name) for name in names}
         _original_environment = previous
         try:
+            if getattr(sys, "frozen", False):
+                from core.screenshot_components import activate_scroll
+                activate_scroll()
             for name in names:
                 os.environ[name] = str(OPENBLAS_THREADS)
             # cv2 imports NumPy too, so BOTH imports must be inside this scope.

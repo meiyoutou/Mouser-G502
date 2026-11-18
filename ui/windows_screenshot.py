@@ -349,6 +349,10 @@ class WindowsScreenshotController(QObject):
         self._overlay.show()
 
     def _start_scroll(self, rect):
+        from ui.screenshot_components import ensure_component
+        if not ensure_component("scroll", self, self._locale, lambda: self._start_scroll(rect)
+                                if self._pending_capture is not None and self._overlay is not None else None):
+            return
         overlay, self._overlay = self._overlay, None
         capture, self._pending_capture = self._pending_capture, None
         action, self._pending_action = self._pending_action, ""

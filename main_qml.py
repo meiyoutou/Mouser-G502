@@ -74,6 +74,11 @@ def _prepare_windows_dll_search_paths():
 
 _prepare_windows_dll_search_paths()
 
+if __name__ == "__main__" and "--check-screenshot-components" in sys.argv:
+    from ui.screenshot_component_check import run_check as check_screenshot_components
+    index = sys.argv.index("--check-screenshot-components")
+    raise SystemExit(check_screenshot_components(sys.argv[index + 1]))
+
 if __name__ == "__main__" and "--check-resource-lifecycle" in sys.argv:
     from ui.resource_lifecycle_check import run_check as check_resource_lifecycle
     index = sys.argv.index("--check-resource-lifecycle")

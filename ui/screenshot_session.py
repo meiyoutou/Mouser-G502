@@ -311,6 +311,8 @@ class ScreenshotSession(RegionSelectionOverlay):
         from core import text_selection
         if text_selection.checked_runtime() is None:
             self._status("text_select_missing")
+            from ui.screenshot_components import ensure_component
+            ensure_component("text", self, self.locale, self._start_text_selection)
             return
         self._commit_text()
         self.toolbar.select_tool("select")
@@ -491,6 +493,9 @@ class ScreenshotSession(RegionSelectionOverlay):
         # subsequent live ones. Require the user to undo annotations first.
         if self.document.annotations:
             self._status("scroll_before_marks")
+            return
+        from ui.screenshot_components import ensure_component
+        if not ensure_component("scroll", self, self.locale, self._start_scroll):
             return
         self._completed = True
         self.scrollRequested.emit(rect)

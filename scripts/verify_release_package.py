@@ -51,6 +51,7 @@ def archive_report(archive, version, commit, *, local_test=False):
         assert not private, f"Private entries: {private}"
         assert not models, f"Bundled models: {models}"
         assert not libraries, f"Bundled ASR libraries: {libraries}"
+        assert not screenshot_libraries, f"Bundled optional screenshot engines: {screenshot_libraries}"
         assert not root_icu, f"Root ICU DLLs: {root_icu}"
         assert bundle.testzip() is None, "Archive CRC failed"
         info = json.loads(bundle.read("Mouser/_internal/mouser_build_info.json"))
@@ -61,6 +62,7 @@ def archive_report(archive, version, commit, *, local_test=False):
                 "Mouser.exe", "_internal", "文字选择组件"
             }, "Public portable package must contain runtime files only"
         component_files = [name for name in names if name.startswith("Mouser/文字选择组件/")]
+        assert not component_files, "Text selection belongs in an optional ZIP"
         if component_files:
             from core import text_selection
             prefix = "Mouser/文字选择组件/"
@@ -72,6 +74,7 @@ def archive_report(archive, version, commit, *, local_test=False):
                 assert hashlib.sha256(bundle.read(prefix + name)).hexdigest() == expected, name
         assert json.loads(bundle.read("Mouser/_internal/speech-runtime.json"))["enabled"] is False
         assert bundle.read("Mouser/_internal/core/speech_component_assets.json") == (ROOT / "core/speech_component_assets.json").read_bytes()
+        assert bundle.read("Mouser/_internal/core/screenshot_component_assets.json") == (ROOT / "core/screenshot_component_assets.json").read_bytes()
         for source in (ROOT / "ui/qml").glob("*.qml"):
             assert bundle.read("Mouser/_internal/ui/qml/" + source.name) == source.read_bytes(), source.name
         assert any("uiautomation" in name.lower() for name in names), "Caret anchor runtime missing"

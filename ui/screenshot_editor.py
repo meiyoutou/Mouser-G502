@@ -827,6 +827,8 @@ class ScreenshotEditor(QWidget):
         from core import text_selection
         if text_selection.checked_runtime() is None:
             self._status("text_select_missing")
+            from ui.screenshot_components import ensure_component
+            ensure_component("text", self, self.locale, self._start_text_selection)
             return
         self._commit_text()
         self.toolbar.select_tool("select")

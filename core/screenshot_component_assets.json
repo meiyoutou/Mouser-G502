@@ -1,0 +1,27 @@
+{
+  "protocol": 1,
+  "assets": {
+    "scroll": {
+      "id": "scroll-v1-cp313-win64",
+      "python_abi": "cp313",
+      "name": "Mouser-screenshot-scroll-v1-cp313-win64.zip",
+      "url": "https://github.com/meiyoutou/Mouser-G502/releases/download/screenshot-components-v1-win64/Mouser-screenshot-scroll-v1-cp313-win64.zip",
+      "available_online": false,
+      "size": 41250797,
+      "expanded_size": 119162965,
+      "sha256": "8191c35783bea94f7a3839e404c08cb654b2e2e6e3b79c1f3d40a5346587f234",
+      "manifest_sha256": "40c037a51e2dc089183111df2d9becd356594876a6bb82ceb31279955ee24981"
+    },
+    "text": {
+      "id": "text-v1-cp313-win64",
+      "python_abi": "cp313",
+      "name": "Mouser-screenshot-text-v1-cp313-win64.zip",
+      "url": "https://github.com/meiyoutou/Mouser-G502/releases/download/screenshot-components-v1-win64/Mouser-screenshot-text-v1-cp313-win64.zip",
+      "available_online": false,
+      "size": 7925346,
+      "expanded_size": 16059842,
+      "sha256": "c8fae654f2a44dd873bda1c16b879e6d6e2367740504cbd5e9b7638fef928b38",
+      "manifest_sha256": "50d8ed035fb7ca99e22c6ddc3b90d8b76e9f3ff6b2296d92558ca59068d0a1bc"
+    }
+  }
+}

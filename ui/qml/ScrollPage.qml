@@ -1224,6 +1224,28 @@ Item {
                     }
 
                     Rectangle {
+                        visible: backend.isWindows
+                        width: parent.width
+                        height: 42
+                        radius: 8
+                        color: componentMouse.containsMouse ? scrollPage.theme.bgCardHover : scrollPage.theme.bgSubtle
+                        Text {
+                            anchors.centerIn: parent
+                            text: s["screenshot.components_manage"]
+                            color: scrollPage.theme.textPrimary
+                            font.family: uiState.fontFamily
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: componentMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: backend.openScreenshotComponents()
+                        }
+                    }
+
+                    Rectangle {
                         width: parent.width
                         height: 58
                         radius: 10

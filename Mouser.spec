@@ -125,7 +125,7 @@ APP_VERSION = _load_app_version()
 BUILD_INFO_DATA = _write_build_info(APP_VERSION)
 SPEECH_BINARIES, SPEECH_DATAS = _collect_optional_speech_runtime()
 # Image registration belongs to screenshots, not the optional speech/OCR packs.
-for package in ("opencv-python-headless", "numpy"):
+for package in (("opencv-python-headless", "numpy") if SPEECH_ENABLED else ()):
     distribution = importlib.metadata.distribution(package)
     licenses = [item for item in distribution.files
                 if ".dist-info" in str(item) and "license" in str(item).lower()
@@ -160,12 +160,11 @@ a = Analysis(
         (os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"), "."),
         (os.path.join(ROOT, "core", "speech_component_assets.json"), "core"),
         (os.path.join(ROOT, "core", "text_selection_assets.json"), "core"),
+        (os.path.join(ROOT, "core", "screenshot_component_assets.json"), "core"),
     ] + SPEECH_DATAS,
     hiddenimports=[
         # conditional / lazy imports PyInstaller may miss
         "hid",
-        "numpy",
-        "cv2",
         "sounddevice",
         "sherpa_onnx",
         "soxr",
@@ -193,6 +192,10 @@ a = Analysis(
         "ui.screenshot_text_selection",
         "ui.screenshot_session",
         "ui.settings_window",
+        "ui.screenshot_components",
+        "ui.screenshot_component_locale",
+        "ui.screenshot_component_check",
+        "core.screenshot_components",
         "ui.resource_lifecycle_check",
         "ui.screenshot_toolbar",
         "core.text_selection",
@@ -217,6 +220,8 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         *SPEECH_EXCLUDES,
+        # Optional long-capture native engines live in a pinned component ZIP.
+        *(["numpy", "cv2"] if not SPEECH_ENABLED else []),
         # Screenshots/exports use PNG/JPEG/BMP, never AVIF or video decoding.
         "PIL.AvifImagePlugin",
         "PIL._avif",

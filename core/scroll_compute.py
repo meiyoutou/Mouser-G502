@@ -71,21 +71,31 @@ class ScrollComputeClient:
         self.process = None
         self._closed = False
         self._lock = threading.Lock()
+        self._component_use = None
 
     def _start(self):
         if self._closed:
             raise StitchError("scroll_capture_error")
         if self.process is None or self.process.poll() is not None:
+            from core.screenshot_components import using
+            if self._component_use is None:
+                self._component_use = using("scroll")
+                self._component_use.__enter__()
             command = ([sys.executable, "--scroll-compute-worker"]
                        if getattr(sys, "frozen", False)
                        else [sys.executable, "-u", "-m", "core.scroll_compute"])
             from core.compute_limits import child_environment
-            self.process = subprocess.Popen(
-                command, cwd=str(Path(__file__).resolve().parents[1]),
-                env=dict(child_environment(), PYTHONIOENCODING="utf-8",
-                         PYINSTALLER_RESET_ENVIRONMENT="1", PYTHONDONTWRITEBYTECODE="1"),
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                bufsize=0, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                self.process = subprocess.Popen(
+                    command, cwd=str(Path(__file__).resolve().parents[1]),
+                    env=dict(child_environment(), PYTHONIOENCODING="utf-8",
+                             PYINSTALLER_RESET_ENVIRONMENT="1", PYTHONDONTWRITEBYTECODE="1"),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    bufsize=0, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except BaseException:
+                self._component_use.__exit__(None, None, None)
+                self._component_use = None
+                raise
             if self._closed:  # Cancellation may have raced the Popen call.
                 self.close()
                 raise StitchError("scroll_capture_error")
@@ -138,6 +148,7 @@ class ScrollComputeClient:
         if process is None:
             return
         self._terminate(process)  # Only our disposable compute child, never the main app.
+        use, self._component_use = self._component_use, None
         def reap():
             try:
                 process.wait(timeout=3)
@@ -150,6 +161,8 @@ class ScrollComputeClient:
                         stream.close()
                     except (OSError, ValueError):
                         pass
+                if use is not None:
+                    use.__exit__(None, None, None)
         threading.Thread(target=reap, name="ScrollComputeCleanup", daemon=True).start()
 
 

@@ -16,7 +16,7 @@ os.environ.update(QT_QPA_PLATFORM="offscreen", QT_QPA_FONTDIR=r"C:\Windows\Fonts
                   LOCALAPPDATA=str(OUTPUT / "isolated/local"),
                   MOUSER_SPEECH_MODEL_DIR=str(OUTPUT / "isolated/speech_models"))
 MODULES = (
-    "text_selection", "screenshot_live",
+    "text_selection", "screenshot_components", "screenshot_live",
     "screenshot_session", "screenshot_editor", "screenshot_pin", "screenshot_phase2",
     "screenshot_autoscroll", "screenshot_scroll_region", "screenshot_motion",
     "screenshot_registration", "screenshot_diagnostics", "windows_screenshot_helpers",

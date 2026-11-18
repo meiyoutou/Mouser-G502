@@ -342,8 +342,10 @@ class EditorSelectionTests(unittest.TestCase):
 
     def test_missing_and_failed_recognition_leave_editor_usable(self):
         editor = self.make()
-        with patch("core.text_selection.checked_runtime", return_value=None):
+        with patch("core.text_selection.checked_runtime", return_value=None), \
+                patch("ui.screenshot_components.ensure_component", return_value=False) as manager:
             editor._invoke("text_select")
+        manager.assert_called_once()
         self.assertIsNone(editor._selection_worker)
         self.assertIn("文字选择组件", editor.hint.text())
         worker = self.start(editor)

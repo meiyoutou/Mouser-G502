@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.7.61 (local test build) — Optional screenshot engines
+
+- Move OpenCV/NumPy and text-selection binaries out of the main portable ZIP.
+  Keep the existing algorithm, child-process isolation and completed-image editor.
+- Add an explicit, non-modal component manager at first use and in screenshot
+  settings: local-first installation, offline ZIP import, status and uninstall.
+- Pin archive size/hash, manifest and every component file. Stage atomically;
+  preserve old installations on error/cancellation; reject unsafe paths and
+  extra files; block mutation while an owned recognition/compute job is active.
+- Preserve installed components across main-app upgrades, legacy adjacent text
+  components, ordinary screenshots, annotation/pinning and Ctrl+wheel navigation.
+- Test component downloads are disabled until public assets actually exist;
+  deliver checked offline ZIPs. No personal data, recording or screenshots upload.
+
 ## v3.7.60 — Windows screenshot tools, long-image text selection and view navigation
 
 - Add the existing optional Text selection action to finished-image editors,

@@ -1641,6 +1641,12 @@ class Backend(QObject):
     def screenshotEditorEnabled(self):
         return bool(self._cfg.get("settings", {}).get("screenshot_editor_enabled", True))
 
+    @Slot()
+    def openScreenshotComponents(self):
+        from ui.screenshot_components import open_manager
+        from ui.locale_manager import LocaleManager
+        self._screenshot_components_dialog = open_manager(LocaleManager(self._language()))
+
     @Slot(bool)
     def setScreenshotEditorEnabled(self, enabled):
         enabled = bool(enabled)
@@ -3039,6 +3045,10 @@ class Backend(QObject):
             return
         settings["language"] = normalized
         save_config(self._cfg)
+        dialog = getattr(self, "_screenshot_components_dialog", None)
+        if dialog is not None:
+            dialog.locale.setLanguage(normalized)
+            dialog.retranslate()
         if self._engine:
             self._engine.cfg = self._cfg
         self.settingsChanged.emit()

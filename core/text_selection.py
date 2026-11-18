@@ -31,6 +31,10 @@ def catalog():
 def checked_runtime(root=None):
     asset = catalog()
     if root is None:
+        from core.screenshot_components import checked_directory
+        installed = checked_directory("text")
+        if installed is not None:
+            return installed
         base = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT
         root = base / asset["directory"]
     root = Path(root)
@@ -52,6 +56,12 @@ def checked_runtime(root=None):
 
 
 def recognize(image, *, runtime=None, cancelled=None):
+    from core.screenshot_components import using
+    with using("text"):
+        return _recognize(image, runtime=runtime, cancelled=cancelled)
+
+
+def _recognize(image, *, runtime=None, cancelled=None):
     runtime = checked_runtime(runtime)
     if runtime is None:
         raise TextSelectionError("text_select_missing")

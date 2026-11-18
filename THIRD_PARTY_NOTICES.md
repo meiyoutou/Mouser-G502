@@ -32,9 +32,10 @@ SOFTWARE.
 
 ## Binary dependencies
 
-The portable build includes OpenCV (Apache-2.0) and NumPy (BSD-3-Clause).
-Their distribution license and bundled-library notices are included under
-`_internal/third_party_licenses/`. OpenCV and NumPy are screenshot dependencies,
+The optional long-capture engine includes OpenCV (Apache-2.0) and NumPy
+(BSD-3-Clause), rather than bundling them in the main app. Their distribution
+license and bundled-library notices are included in the component's `licenses/`
+directory. OpenCV and NumPy are screenshot dependencies,
 not bundled speech recognition engines or AI models.
 
 eSearch and ShareX were inspected for interaction ideas only. No GPL source
@@ -42,7 +43,8 @@ from either project is incorporated into this MIT implementation.
 
 ## Optional screenshot text selection
 
-The separate `文字选择组件` folder is optional. The previous RapidOCR / PP-OCRv6
+The separately installed text-selection component is optional; legacy adjacent
+`文字选择组件` folders remain supported. The previous RapidOCR / PP-OCRv6
 implementation, installer and result dialog have been removed from this build.
 Text selection still uses OCR technology internally; it is not native source text.
 No recognizer is loaded into the
